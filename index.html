@@ -201,6 +201,34 @@
                     </button>
                 </div>
             </div>
+
+            <!-- Firebase Setup Instructions Box -->
+            <div class="bg-slate-800/80 border border-slate-700 rounded-2xl p-5 shadow-lg space-y-3">
+                <div class="flex items-center justify-between">
+                    <h4 class="text-xs uppercase tracking-wider font-bold text-amber-400 flex items-center gap-1.5">
+                        <span>⚠️</span> <span>Important: Where to add your Firebase Firestore Rules</span>
+                    </h4>
+                    <span class="text-[11px] text-slate-400">Fixes "Missing or insufficient permissions"</span>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed">
+                    Firebase rules are <strong>not added inside this HTML file</strong>. Instead, they must be pasted directly in your online <a href="https://console.firebase.google.com/" target="_blank" class="text-emerald-400 underline font-semibold">Firebase Console</a> under your project's Firestore database:
+                </p>
+                <ol class="list-decimal list-inside text-xs text-slate-300 space-y-1 pl-1">
+                    <li>Go to <strong class="text-white">Firestore Database</strong> in your Firebase Console.</li>
+                    <li>Click on the <strong class="text-white">Rules</strong> tab at the top.</li>
+                    <li>Replace whatever is there with the rule snippet below, then click <strong class="text-emerald-400">Publish</strong>:</li>
+                </ol>
+                <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-900 font-mono text-[11px] text-emerald-300 select-all overflow-x-auto">
+<pre>rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /artifacts/tambola-live-app/public/data/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}</pre>
+                </div>
+            </div>
         </div>
 
         <!-- ================= 2. HOST BOARD SECTION ================= -->
@@ -562,7 +590,7 @@
         };
 
         // Firebase Initialization (uses environment config if available, otherwise uses MANUAL_FIREBASE_CONFIG)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'tambola-live-app';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'housie';
         const hasManualConfig = MANUAL_FIREBASE_CONFIG.apiKey && MANUAL_FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY";
         const firebaseConfig = typeof __firebase_config !== 'undefined'
             ? JSON.parse(__firebase_config)
@@ -772,16 +800,20 @@
             }
 
             if (!isOfflinePractice && db) {
+                const btn = document.getElementById('btn-create-room');
                 try {
-                    const btn = document.getElementById('btn-create-room');
                     btn.disabled = true;
-                    btn.innerHTML = '<span>⏳ Creating Room...</span>';
+                    btn.innerHTML = '<span>⏳ Authenticating & Creating...</span>';
 
                     const user = await ensureAuth();
+                    if (!user) {
+                        throw new Error("Authentication failed. Please check Firebase Anonymous Auth settings.");
+                    }
+
                     const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'tambola_rooms', roomCode);
                     await setDoc(roomRef, {
                         roomCode: roomCode,
-                        hostId: user ? user.uid : 'host',
+                        hostId: user.uid,
                         hostName: playerName,
                         calledNumbers: [],
                         currentNumber: null,
@@ -795,24 +827,24 @@
                         createdAt: Date.now()
                     });
 
-                    if (user) {
-                        const playerRef = doc(db, 'artifacts', appId, 'public', 'data', `tambola_players_${roomCode}`, user.uid);
-                        await setDoc(playerRef, {
-                            uid: user.uid,
-                            name: `${playerName} (Host)`,
-                            ticketCount: tickets.length,
-                            ticketNames: tickets.map(t => t.name),
-                            joinedAt: Date.now()
-                        });
-                    }
-
                     subscribeToRoom(roomCode);
                     btn.disabled = false;
                     btn.innerHTML = '<span>🚀 Create Multiplayer Room</span>';
                 } catch (err) {
-                    console.error("Failed to create room:", err);
-                    showModal('⚠️', 'Connection Issue', 'Could not connect to live server. Starting in local offline mode.');
-                    isOfflinePractice = true;
+                    console.error("Failed to create multiplayer room:", err);
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>🚀 Create Multiplayer Room</span>';
+                    
+                    const modal = document.getElementById('custom-modal');
+                    document.getElementById('modal-icon').textContent = '⚠️';
+                    document.getElementById('modal-title').textContent = 'Firestore Permission Error';
+                    document.getElementById('modal-message').textContent = `Firebase returned: "${err.message || 'Missing or insufficient permissions'}".\n\nTo fix this permanently, make sure your Firestore Rules allow authenticated users. Would you like to launch in Solo / Local Practice Mode right now?`;
+                    document.getElementById('modal-actions').innerHTML = `
+                        <button onclick="closeModal()" class="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold rounded-xl text-sm">Cancel</button>
+                        <button onclick="closeModal(); createMultiplayerGame(true);" class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-sm">Play Practice Mode</button>
+                    `;
+                    modal.classList.remove('hidden');
+                    return;
                 }
             }
 
