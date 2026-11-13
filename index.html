@@ -545,9 +545,9 @@
 
     <!-- Firebase & Multiplayer Game Script -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/13.3.0/firebase-app.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/13.3.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // =========================================================================
         // STEP 5: PASTE YOUR FIREBASE CONFIG BELOW FOR GITHUB PAGES / LIVE HOSTING
@@ -562,8 +562,8 @@
         };
 
         // Firebase Initialization (uses environment config if available, otherwise uses MANUAL_FIREBASE_CONFIG)
-        const appId = typeof __app_id !== '1:629233623023:web:90d6f4aa8a0aaeaa04a01a' ? __app_id : 'Online Housie';
-        const hasManualConfig = MANUAL_FIREBASE_CONFIG.apiKey && MANUAL_FIREBASE_CONFIG.apiKey !== "AIzaSyCgQ27fdHpO13OQ9V5fNIwktY_1Ezm7UQc";
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'tambola-live-app';
+        const hasManualConfig = MANUAL_FIREBASE_CONFIG.apiKey && MANUAL_FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY";
         const firebaseConfig = typeof __firebase_config !== 'undefined'
             ? JSON.parse(__firebase_config)
             : (hasManualConfig ? MANUAL_FIREBASE_CONFIG : null);
