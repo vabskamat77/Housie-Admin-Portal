@@ -93,7 +93,7 @@
                     Play Tambola Online with Friends
                 </h2>
                 <p class="text-sm sm:text-base text-slate-400 max-w-xl mx-auto">
-                    Host a live room with an automated voice caller board, or join an existing game using a 6-character code or invite link with up to 5 named tickets.
+                    Host a live room with an automated voice caller board, or join an existing game using a 6-character code or invite link.
                 </p>
             </div>
 
@@ -124,16 +124,13 @@
                                 <div id="host-ticket-config" class="hidden space-y-3 pt-2 border-t border-slate-800">
                                     <div>
                                         <label class="block text-xs text-slate-400 mb-1">Number of Tickets (1-5)</label>
-                                        <select id="host-ticket-count" onchange="renderTicketNameInputs('host')" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white">
-                                            <option value="1">1 Ticket</option>
+                                        <select id="host-ticket-count" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white">
+                                            <option value="1" selected>1 Ticket</option>
                                             <option value="2">2 Tickets</option>
                                             <option value="3">3 Tickets</option>
                                             <option value="4">4 Tickets</option>
                                             <option value="5">5 Tickets</option>
                                         </select>
-                                    </div>
-                                    <div id="host-ticket-names-container" class="space-y-2">
-                                        <!-- Ticket name inputs injected here -->
                                     </div>
                                 </div>
                             </div>
@@ -158,7 +155,7 @@
                         </div>
                         <div>
                             <h3 class="text-xl font-bold text-white">Join an Existing Game</h3>
-                            <p class="text-xs text-slate-400 mt-1">Enter the 6-character Game Code shared by your host and customize up to 5 named tickets.</p>
+                            <p class="text-xs text-slate-400 mt-1">Enter the 6-character Game Code shared by your host and select how many tickets you want.</p>
                         </div>
 
                         <div class="space-y-3 pt-2">
@@ -169,29 +166,19 @@
                                 </div>
                                 <div>
                                     <label class="block text-xs font-semibold text-slate-300 mb-1">Your Player Name</label>
-                                    <input type="text" id="join-player-name" placeholder="e.g., Priya" oninput="updateDefaultTicketNames('join')" class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500">
+                                    <input type="text" id="join-player-name" placeholder="e.g., Priya" class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500">
                                 </div>
                             </div>
 
                             <div>
                                 <label class="block text-xs font-semibold text-slate-300 mb-1">How Many Tickets? (1 to 5)</label>
-                                <select id="join-ticket-count" onchange="renderTicketNameInputs('join')" class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500">
-                                    <option value="1">1 Ticket</option>
-                                    <option value="2" selected>2 Tickets</option>
+                                <select id="join-ticket-count" class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500">
+                                    <option value="1" selected>1 Ticket</option>
+                                    <option value="2">2 Tickets</option>
                                     <option value="3">3 Tickets</option>
                                     <option value="4">4 Tickets</option>
                                     <option value="5">5 Tickets</option>
                                 </select>
-                            </div>
-
-                            <div class="bg-slate-900/70 p-3.5 rounded-xl border border-slate-700/70 space-y-2">
-                                <div class="flex justify-between items-center">
-                                    <span class="text-xs font-semibold text-slate-300">Customize Ticket Names</span>
-                                    <span class="text-[11px] text-slate-400">Editable anytime</span>
-                                </div>
-                                <div id="join-ticket-names-container" class="space-y-2 max-h-44 overflow-y-auto pr-1">
-                                    <!-- Ticket name inputs injected here -->
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -371,9 +358,9 @@
                     </div>
                     <div class="flex items-center gap-3">
                         <div class="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-700">
-                            <span class="text-xs font-bold text-white" id="host-automark-label">Manual Mark</span>
-                            <button type="button" id="host-automark-toggle-btn" onclick="toggleAutoMark()" role="switch" aria-checked="false" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-slate-700 transition-colors duration-200 ease-in-out focus:outline-none">
-                                <span id="host-automark-toggle-knob" class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-0"></span>
+                            <span class="text-xs font-bold text-white" id="host-automark-label">Auto-Mark ON</span>
+                            <button type="button" id="host-automark-toggle-btn" onclick="toggleAutoMark()" role="switch" aria-checked="true" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-emerald-600 transition-colors duration-200 ease-in-out focus:outline-none">
+                                <span id="host-automark-toggle-knob" class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-5"></span>
                             </button>
                         </div>
                     </div>
@@ -441,11 +428,11 @@
                         <!-- Auto-Mark vs Manual-Mark Toggle -->
                         <div class="flex items-center gap-2.5 bg-slate-900 px-3.5 py-2 rounded-xl border border-slate-700">
                             <div>
-                                <div class="text-xs font-bold text-white" id="automark-status-label">Manual Mark</div>
-                                <div class="text-[10px] text-slate-400" id="automark-sub-label">Tap numbers to daub</div>
+                                <div class="text-xs font-bold text-white" id="automark-status-label">Auto-Mark ON</div>
+                                <div class="text-[10px] text-slate-400" id="automark-sub-label">Auto-daubing called numbers</div>
                             </div>
-                            <button type="button" id="automark-toggle-btn" onclick="toggleAutoMark()" role="switch" aria-checked="false" class="relative inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-slate-700 transition-colors duration-200 ease-in-out focus:outline-none">
-                                <span id="automark-toggle-knob" class="pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-0"></span>
+                            <button type="button" id="automark-toggle-btn" onclick="toggleAutoMark()" role="switch" aria-checked="true" class="relative inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-emerald-600 transition-colors duration-200 ease-in-out focus:outline-none">
+                                <span id="automark-toggle-knob" class="pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-5"></span>
                             </button>
                         </div>
 
@@ -673,7 +660,7 @@
         let currentNumber = null;
         let autoPlayInterval = null;
         let isAudioEnabled = true;
-        let isAutoMarkEnabled = false;
+        let isAutoMarkEnabled = true;
         let tickets = [];
         let claimsStatus = {
             "Early 5": null,
@@ -682,7 +669,6 @@
             "Bottom Line": null,
             "Full House": null
         };
-        let lastAnnouncedWinnerCount = 0;
         let unsubscribeRoom = null;
         let unsubscribePlayers = null;
         let roomRoster = [];
@@ -730,42 +716,9 @@
             const cfg = document.getElementById('host-ticket-config');
             if (checked) {
                 cfg.classList.remove('hidden');
-                renderTicketNameInputs('host');
             } else {
                 cfg.classList.add('hidden');
             }
-        }
-
-        function renderTicketNameInputs(role) {
-            const count = parseInt(document.getElementById(`${role}-ticket-count`).value, 10) || 1;
-            const container = document.getElementById(`${role}-ticket-names-container`);
-            const nameInput = role === 'host'
-                ? (document.getElementById('host-name-input').value.trim() || 'Host')
-                : (document.getElementById('join-player-name').value.trim() || 'Player');
-
-            const existingValues = Array.from(container.querySelectorAll('input')).map(inp => inp.value);
-            container.innerHTML = '';
-
-            for (let i = 0; i < count; i++) {
-                const defaultVal = existingValues[i] || `${nameInput}'s Ticket ${i + 1}`;
-                const input = document.createElement('input');
-                input.type = 'text';
-                input.value = defaultVal;
-                input.placeholder = `Ticket ${i + 1} Name`;
-                input.className = 'w-full px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500';
-                container.appendChild(input);
-            }
-        }
-
-        function updateDefaultTicketNames(role) {
-            const container = document.getElementById(`${role}-ticket-names-container`);
-            const baseName = document.getElementById('join-player-name').value.trim() || 'Player';
-            const inputs = container.querySelectorAll('input');
-            inputs.forEach((inp, idx) => {
-                if (inp.value.includes("'s Ticket ") || inp.value.startsWith("Player's Ticket")) {
-                    inp.value = `${baseName}'s Ticket ${idx + 1}`;
-                }
-            });
         }
 
         // Authentic 3x9 Tambola Ticket Generator
@@ -789,7 +742,6 @@
                 const rowCounts = [0, 0, 0];
                 let possible = true;
 
-                // Place columns with 3 numbers first, then 2, then 1
                 const colOrder = [0, 1, 2, 3, 4, 5, 6, 7, 8].sort((a, b) => colCounts[b] - colCounts[a]);
 
                 for (const col of colOrder) {
@@ -799,7 +751,6 @@
                     const pool = [];
                     for (let n = minNum; n <= maxNum; n++) pool.push(n);
 
-                    // Pick `count` unique numbers and sort ascending
                     const chosenNums = [];
                     for (let k = 0; k < count; k++) {
                         const idx = Math.floor(Math.random() * pool.length);
@@ -807,7 +758,6 @@
                     }
                     chosenNums.sort((a, b) => a - b);
 
-                    // Choose rows with lowest current fill
                     const availableRows = [0, 1, 2].filter(r => rowCounts[r] < 5);
                     if (availableRows.length < count) {
                         possible = false;
@@ -830,9 +780,21 @@
             return grid;
         }
 
+        function generateUniqueTicketId() {
+            const existingIds = new Set(tickets.map(t => t.id));
+            let uniqueId = '';
+            do {
+                const randPart = (typeof crypto !== 'undefined' && crypto.randomUUID)
+                    ? crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()
+                    : (Date.now().toString(36) + Math.random().toString(36).substring(2, 6)).slice(-8).toUpperCase();
+                uniqueId = `TKT-${randPart}`;
+            } while (existingIds.has(uniqueId));
+            return uniqueId;
+        }
+
         function createTicketObject(name) {
             return {
-                id: 'tkt_' + Math.random().toString(36).substring(2, 9),
+                id: generateUniqueTicketId(),
                 name: name,
                 grid: generateTambolaTicketGrid(),
                 daubed: Array.from({ length: 3 }, () => Array(9).fill(false))
@@ -849,13 +811,9 @@
             tickets = [];
             const hostPlays = document.getElementById('host-play-checkbox').checked || isOfflinePractice;
             if (hostPlays) {
-                const count = isOfflinePractice
-                    ? (parseInt(document.getElementById('host-ticket-count').value, 10) || 2)
-                    : (parseInt(document.getElementById('host-ticket-count').value, 10) || 1);
-                const nameInputs = Array.from(document.querySelectorAll('#host-ticket-names-container input'));
+                const count = parseInt(document.getElementById('host-ticket-count').value, 10) || 1;
                 for (let i = 0; i < count; i++) {
-                    const tName = (nameInputs[i] && nameInputs[i].value.trim()) || `${playerName}'s Ticket ${i + 1}`;
-                    tickets.push(createTicketObject(tName));
+                    tickets.push(createTicketObject(`${playerName}'s Ticket ${i + 1}`));
                 }
             }
 
@@ -953,11 +911,13 @@
                 }
 
                 const count = parseInt(document.getElementById('join-ticket-count').value, 10) || 1;
-                const nameInputs = Array.from(document.querySelectorAll('#join-ticket-names-container input'));
                 tickets = [];
                 for (let i = 0; i < count; i++) {
-                    const tName = (nameInputs[i] && nameInputs[i].value.trim()) || `${playerName}'s Ticket ${i + 1}`;
-                    tickets.push(createTicketObject(tName));
+                    tickets.push(createTicketObject(`${playerName}'s Ticket ${i + 1}`));
+                }
+
+                if (isAutoMarkEnabled) {
+                    applyAutoMarkToAllTickets();
                 }
 
                 saveSessionState();
@@ -996,7 +956,6 @@
                 const session = JSON.parse(raw);
                 if (!session || !session.roomCode || !session.tickets || session.tickets.length === 0) return;
 
-                // Check if session is less than 6 hours old
                 if (Date.now() - session.savedAt > 6 * 3600 * 1000) {
                     clearSessionState();
                     return;
@@ -1006,7 +965,7 @@
                 isHost = session.isHost;
                 playerName = session.playerName;
                 tickets = session.tickets;
-                isAutoMarkEnabled = session.isAutoMarkEnabled || false;
+                isAutoMarkEnabled = session.isAutoMarkEnabled ?? true;
 
                 if (db) {
                     const user = await ensureAuth();
@@ -1030,7 +989,6 @@
                             }, { merge: true });
                         }
                     } else {
-                        // Room no longer exists online, fallback to offline/practice mode with saved tickets
                         isOfflinePractice = true;
                     }
                 } else {
@@ -1105,7 +1063,6 @@
                 switchTab('player');
             }
 
-            // Also register host's own tickets in roster if host is playing
             if (isHost && tickets.length > 0) {
                 syncPlayerMetadata();
             }
@@ -1193,7 +1150,6 @@
             const eligibleCountEl = document.getElementById('host-eligible-count');
             if (!claimedListEl || !eligibleListEl) return;
 
-            // 1. Render Claimed vs Open Prizes
             let claimedTotal = 0;
             claimedListEl.innerHTML = prizeOrder.map(prize => {
                 const win = claimsStatus[prize];
@@ -1218,7 +1174,6 @@
             }).join('');
             claimedCountEl.textContent = `${claimedTotal} / 5`;
 
-            // 2. Evaluate all player tickets (from Firestore roster + local host tickets if offline)
             const participants = [];
             if (isOfflinePractice) {
                 participants.push({
@@ -1242,7 +1197,6 @@
                         tickets: parsedTickets
                     });
                 });
-                // Fallback if host is playing and roster snapshot hasn't arrived yet
                 if (isHost && tickets.length > 0 && !participants.some(p => currentUser && p.uid === currentUser.uid)) {
                     participants.push({
                         uid: 'local_host',
@@ -1260,6 +1214,7 @@
                     if (matchedPrizes.length > 0) {
                         eligibleItems.push({
                             playerName: player.name,
+                            ticketId: tkt.id || '',
                             ticketName: tkt.name || 'Ticket',
                             prizes: matchedPrizes
                         });
@@ -1274,7 +1229,11 @@
                 eligibleListEl.innerHTML = eligibleItems.map(item => `
                     <div class="bg-amber-500/10 border border-amber-500/40 rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
                         <div>
-                            <div class="text-xs font-bold text-white">${escapeHtml(item.playerName)} <span class="text-slate-400 font-normal">• "${escapeHtml(item.ticketName)}"</span></div>
+                            <div class="text-xs font-bold text-white">
+                                ${escapeHtml(item.playerName)}
+                                <span class="text-slate-400 font-normal">• "${escapeHtml(item.ticketName)}"</span>
+                                ${item.ticketId ? `<span class="ml-1 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 font-mono text-[10px] text-slate-300">${escapeHtml(item.ticketId)}</span>` : ''}
+                            </div>
                             <div class="text-[11px] text-amber-300 font-semibold mt-0.5">Eligible for: ${item.prizes.map(p => escapeHtml(p)).join(', ')}</div>
                         </div>
                         <span class="px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-extrabold text-[10px] uppercase tracking-wider">Ready</span>
@@ -1283,7 +1242,6 @@
             }
         }
 
-        // Share & Room Reset / Leave Helpers
         function copyInviteLink() {
             const url = new URL(window.location.href);
             url.searchParams.set('room', roomCode);
@@ -1401,7 +1359,6 @@
             remainingEl.textContent = `${90 - calledCount} remaining`;
             totalCalledEl.textContent = `Called: ${calledCount} / 90`;
 
-            // Update 1-90 board cells
             const calledSet = new Set(calledNumbers);
             for (let i = 1; i <= 90; i++) {
                 const cell = document.getElementById(`board-num-${i}`);
@@ -1415,7 +1372,6 @@
                 }
             }
 
-            // Recent numbers strip
             if (calledNumbers.length === 0) {
                 recentStrip.innerHTML = `<span class="text-xs text-slate-500 italic px-2">No numbers called yet...</span>`;
             } else {
@@ -1427,7 +1383,6 @@
                 `).join('');
             }
 
-            // Quick stats
             document.getElementById('stat-last').textContent = currentNumber || '--';
             document.getElementById('stat-progress').textContent = `${Math.round((calledCount / 90) * 100)}%`;
             const oddCount = calledNumbers.filter(n => n % 2 !== 0).length;
@@ -1750,7 +1705,6 @@
                     }
                 }
 
-                // Check unclaimed prizes eligible for this ticket
                 const eligiblePrizes = prizeOrder.filter(p => !claimsStatus[p] && verifyPatternOnTicket(tkt, p));
 
                 const gridHtml = tkt.grid.map((rowArr, rIdx) =>
@@ -1788,10 +1742,15 @@
 
                 return `
                     <div class="bg-slate-800/95 border ${eligiblePrizes.length > 0 ? 'border-amber-400 ring-2 ring-amber-400/30' : 'border-slate-700'} rounded-2xl p-4 sm:p-5 shadow-xl">
-                        <div class="flex justify-between items-center gap-2 mb-3">
-                            <input type="text" value="${escapeHtml(tkt.name)}" onchange="renameTicket('${tkt.id}', this.value)"
-                                class="bg-transparent border-b border-transparent hover:border-slate-600 focus:border-emerald-500 font-bold text-sm sm:text-base text-white focus:outline-none px-1 py-0.5 w-2/3" />
-                            <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-emerald-400 border border-slate-700">
+                        <div class="flex flex-wrap justify-between items-center gap-2 mb-3">
+                            <div class="flex items-center gap-2 min-w-0 flex-1">
+                                <span class="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-700 font-mono text-[11px] font-bold text-indigo-300 select-all flex-shrink-0" title="Unique Ticket ID">
+                                    ${escapeHtml(tkt.id)}
+                                </span>
+                                <input type="text" value="${escapeHtml(tkt.name)}" onchange="renameTicket('${tkt.id}', this.value)"
+                                    class="bg-transparent border-b border-transparent hover:border-slate-600 focus:border-emerald-500 font-bold text-sm sm:text-base text-white focus:outline-none px-1 py-0.5 w-full min-w-0" />
+                            </div>
+                            <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-emerald-400 border border-slate-700 flex-shrink-0">
                                 ${markedCount} / 15 Marked
                             </span>
                         </div>
@@ -1847,7 +1806,7 @@
             const sel = document.getElementById('claim-ticket-selector');
             if (!sel) return;
             const prevVal = sel.value;
-            sel.innerHTML = tickets.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+            sel.innerHTML = tickets.map(t => `<option value="${t.id}">${escapeHtml(t.name)} (${escapeHtml(t.id)})</option>`).join('');
             if (prevVal && tickets.some(t => t.id === prevVal)) {
                 sel.value = prevVal;
             }
@@ -1873,11 +1832,10 @@
             if (!tkt) return;
 
             if (!verifyPatternOnTicket(tkt, prizeName)) {
-                showModal('❌', 'Bogey / Not Eligible Yet', `"${tkt.name}" does not have all required called numbers for ${prizeName} yet.`);
+                showModal('❌', 'Bogey / Not Eligible Yet', `"${tkt.name}" (${tkt.id}) does not have all required called numbers for ${prizeName} yet.`);
                 return;
             }
 
-            // Auto-daub matching numbers on winning ticket
             const calledSet = new Set(calledNumbers);
             for (let r = 0; r < 3; r++) {
                 for (let c = 0; c < 9; c++) {
@@ -1890,6 +1848,7 @@
 
             const winRecord = {
                 winnerName: playerName,
+                ticketId: tkt.id,
                 ticketName: tkt.name,
                 claimedAt: Date.now()
             };
@@ -1951,7 +1910,11 @@
                     <div class="bg-slate-900/80 border border-emerald-500/30 rounded-xl p-3.5 flex items-center justify-between">
                         <div>
                             <span class="text-xs font-extrabold uppercase tracking-wider text-emerald-400">${escapeHtml(prize)}</span>
-                            <div class="text-sm font-bold text-white mt-0.5">${escapeHtml(win.winnerName)} <span class="text-xs font-normal text-slate-400">with "${escapeHtml(win.ticketName)}"</span></div>
+                            <div class="text-sm font-bold text-white mt-0.5">
+                                ${escapeHtml(win.winnerName)}
+                                <span class="text-xs font-normal text-slate-400">with "${escapeHtml(win.ticketName)}"</span>
+                                ${win.ticketId ? `<span class="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-[10px] text-indigo-300">${escapeHtml(win.ticketId)}</span>` : ''}
+                            </div>
                         </div>
                         <span class="text-xl">🏆</span>
                     </div>
@@ -2038,8 +2001,6 @@
         // Expose handlers globally for inline HTML onclick/onchange attributes
         Object.assign(window, {
             toggleHostTicketConfig,
-            renderTicketNameInputs,
-            updateDefaultTicketNames,
             createMultiplayerGame,
             joinExistingGame,
             switchTab,
@@ -2069,14 +2030,12 @@
 
         // Initialize Lobby Ticket Inputs & Check URL ?room= Param on Load
         window.addEventListener('DOMContentLoaded', () => {
-            renderTicketNameInputs('join');
             const params = new URLSearchParams(window.location.search);
             const roomParam = params.get('room');
             if (roomParam) {
                 document.getElementById('join-room-code').value = roomParam.trim().toUpperCase().slice(0, 6);
             }
 
-            // Attempt session auto-reconnect on refresh/disconnect
             attemptAutoReconnect();
         });
     </script>
