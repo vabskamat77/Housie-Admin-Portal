@@ -62,6 +62,9 @@
                 <button onclick="switchTab('player')" id="tab-player" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-400 hover:text-white">
                     My Tickets (<span id="ticket-count-badge">0</span>)
                 </button>
+                <button onclick="switchTab('players')" id="tab-players" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-400 hover:text-white">
+                    Players & Tickets
+                </button>
                 <button onclick="switchTab('claims')" id="tab-claims" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-400 hover:text-white">
                     Prizes & Winners
                 </button>
@@ -471,6 +474,25 @@
             <!-- Tickets Container -->
             <div id="tickets-container" class="grid grid-cols-1 xl:grid-cols-2 gap-6">
                 <!-- Populated dynamically -->
+            </div>
+        </div>
+
+        <!-- ================= 3.5. PLAYERS & TICKETS ROSTER TAB ================= -->
+        <div id="section-players" class="hidden space-y-6">
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl space-y-5">
+                <div class="flex flex-wrap justify-between items-center gap-3">
+                    <div>
+                        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                            <span>👥 Room Players & Tickets</span>
+                        </h2>
+                        <p class="text-xs text-slate-400">View all connected players, their ticket IDs, and how many numbers have been called/marked out of 15.</p>
+                    </div>
+                    <span id="all-players-count-badge" class="px-3 py-1 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-500/30 text-xs font-bold">0 Players</span>
+                </div>
+
+                <div id="all-players-roster-list" class="space-y-4">
+                    <p class="text-xs text-slate-500 italic">Loading room participants...</p>
+                </div>
             </div>
         </div>
 
@@ -1074,9 +1096,10 @@
         }
 
         function switchTab(tab) {
-            ['host', 'player', 'claims'].forEach(t => {
+            ['host', 'player', 'players', 'claims'].forEach(t => {
                 const sec = document.getElementById(`section-${t}`);
                 const btn = document.getElementById(`tab-${t}`);
+                if (!sec || !btn) return;
                 if (t === tab) {
                     sec.classList.remove('hidden');
                     btn.classList.remove('text-slate-400', 'hover:text-white');
@@ -1090,6 +1113,9 @@
             if (tab === 'claims') {
                 populateClaimTicketSelector();
             }
+            if (tab === 'players') {
+                renderAllPlayersRosterTab();
+            }
         }
 
         function updateAllRoomUI() {
@@ -1099,6 +1125,9 @@
             renderPlayerTickets();
             renderHostTickets();
             updateClaimsUI();
+            if (!document.getElementById('section-players').classList.contains('hidden')) {
+                renderAllPlayersRosterTab();
+            }
             document.getElementById('ticket-count-badge').textContent = tickets.length;
             document.getElementById('player-tickets-header-count').textContent = tickets.length;
         }
@@ -1403,20 +1432,7 @@
             const listEl = document.getElementById('connected-players-list');
             if (!countEl || !listEl) return;
 
-            const allParticipants = [...roster];
-            if (isHost && tickets.length > 0) {
-                const hostUid = currentUser ? currentUser.uid : 'local_host';
-                if (!allParticipants.some(p => p.uid === hostUid)) {
-                    allParticipants.push({
-                        uid: hostUid,
-                        name: `${playerName} (Host)`,
-                        ticketCount: tickets.length,
-                        ticketNames: tickets.map(t => t.name),
-                        serializedTickets: JSON.stringify(tickets.map(t => ({ id: t.id, name: t.name, grid: t.grid, daubed: t.daubed })))
-                    });
-                }
-            }
-
+            const allParticipants = getAllParticipantsList(roster);
             countEl.textContent = allParticipants.length;
             if (allParticipants.length === 0) {
                 listEl.innerHTML = `<span class="text-xs text-slate-500 italic">Waiting for players to join...</span>`;
@@ -1507,6 +1523,105 @@
                                 ${parsedTickets.length > 0 ? ticketsHtml : '<p class="text-xs text-slate-500 italic text-center py-2">No tickets found for this player.</p>'}
                             </div>
                         ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getAllParticipantsList(roster) {
+            const allParticipants = [...roster];
+            if (isHost && tickets.length > 0) {
+                const hostUid = currentUser ? currentUser.uid : 'local_host';
+                if (!allParticipants.some(p => p.uid === hostUid)) {
+                    allParticipants.push({
+                        uid: hostUid,
+                        name: `${playerName} (Host)`,
+                        ticketCount: tickets.length,
+                        ticketNames: tickets.map(t => t.name),
+                        serializedTickets: JSON.stringify(tickets.map(t => ({ id: t.id, name: t.name, grid: t.grid, daubed: t.daubed })))
+                    });
+                }
+            }
+            return allParticipants;
+        }
+
+        function renderAllPlayersRosterTab() {
+            const listEl = document.getElementById('all-players-roster-list');
+            const badgeEl = document.getElementById('all-players-count-badge');
+            if (!listEl || !badgeEl) return;
+
+            const allParticipants = getAllParticipantsList(roomRoster);
+            badgeEl.textContent = `${allParticipants.length} Player${allParticipants.length === 1 ? '' : 's'}`;
+
+            if (allParticipants.length === 0) {
+                listEl.innerHTML = `<p class="text-xs text-slate-500 italic text-center py-4">No players currently connected.</p>`;
+                return;
+            }
+
+            const calledSet = new Set(calledNumbers);
+
+            listEl.innerHTML = allParticipants.map(p => {
+                let parsedTickets = [];
+                if (p.serializedTickets) {
+                    try {
+                        parsedTickets = JSON.parse(p.serializedTickets);
+                    } catch (e) {
+                        parsedTickets = [];
+                    }
+                }
+
+                const ticketsListHtml = parsedTickets.map(tkt => {
+                    let markedCount = 0;
+                    const gridRows = tkt.grid || [];
+                    const daubedRows = tkt.daubed || Array.from({ length: 3 }, () => Array(9).fill(false));
+
+                    for (let r = 0; r < 3; r++) {
+                        for (let c = 0; c < 9; c++) {
+                            const val = gridRows[r] ? gridRows[r][c] : 0;
+                            if (val > 0 && (daubedRows[r] && daubedRows[r][c] || calledSet.has(val))) {
+                                markedCount++;
+                            }
+                        }
+                    }
+
+                    return `
+                        <div class="bg-slate-900/80 border border-slate-700/80 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3">
+                            <div class="space-y-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold text-white text-sm">"${escapeHtml(tkt.name || 'Ticket')}"</span>
+                                    <span class="px-2 py-0.5 rounded bg-slate-950 border border-slate-700 font-mono text-xs text-indigo-300">${escapeHtml(tkt.id || 'N/A')}</span>
+                                </div>
+                                <div class="text-xs text-slate-400">Called / Marked numbers: <strong class="text-amber-400">${markedCount}</strong> out of 15</div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-32 bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-700">
+                                    <div class="bg-emerald-500 h-2.5 rounded-full transition-all duration-300" style="width: ${(markedCount / 15) * 100}%"></div>
+                                </div>
+                                <span class="text-xs font-bold text-emerald-400">${Math.round((markedCount / 15) * 100)}%</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="bg-slate-900/60 border border-slate-700 rounded-2xl p-4 sm:p-5 space-y-3">
+                        <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-8 h-8 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-sm font-bold text-indigo-300">
+                                    👤
+                                </div>
+                                <div>
+                                    <div class="font-bold text-white text-base">${escapeHtml(p.name || 'Player')}</div>
+                                    <div class="text-xs text-slate-400">${parsedTickets.length} ticket${parsedTickets.length === 1 ? '' : 's'} assigned</div>
+                                </div>
+                            </div>
+                            <span class="px-3 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 text-xs font-semibold">
+                                Connected
+                            </span>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                            ${parsedTickets.length > 0 ? ticketsListHtml : '<p class="text-xs text-slate-500 italic col-span-full">No tickets registered for this player.</p>'}
+                        </div>
                     </div>
                 `;
             }).join('');
@@ -2139,6 +2254,7 @@
             claimPrize,
             claimPrizeForTicket,
             toggleHostPlayerExpand,
+            renderAllPlayersRosterTab,
             copyInviteLink,
             copyShareMessage,
             confirmResetRoomNumbers,
