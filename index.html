@@ -1828,6 +1828,25 @@
                 return;
             }
 
+            // Verify live database state first in case another player claimed it concurrently
+            if (db && roomCode && !isOfflinePractice) {
+                try {
+                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'tambola_rooms', roomCode);
+                    const snap = await getDoc(roomRef);
+                    if (snap.exists()) {
+                        const roomData = snap.data();
+                        if (roomData.claims && roomData.claims[prizeName]) {
+                            claimsStatus = roomData.claims;
+                            updateAllRoomUI();
+                            showModal('ℹ️', 'Already Claimed', `${prizeName} was just claimed by ${claimsStatus[prizeName].winnerName}!`);
+                            return;
+                        }
+                    }
+                } catch (err) {
+                    console.warn("Concurrent claim check warning:", err);
+                }
+            }
+
             const tkt = tickets.find(t => t.id === ticketId);
             if (!tkt) return;
 
@@ -1867,7 +1886,7 @@
             }
 
             updateAllRoomUI();
-            showModal('🏆', `${prizeName} Winner!`, `Congratulations ${playerName}! "${tkt.name}" won ${prizeName}!`);
+            showModal('🏆', `${prizeName} Winner!`, `Congratulations ${playerName}! "${tkt.name}" successfully claimed ${prizeName} first!`);
         }
 
         function updateClaimsUI() {
