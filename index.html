@@ -177,14 +177,6 @@
                                     <option value="3">3 Tickets</option>
                                 </select>
                             </div>
-
-                            <label class="flex items-center gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer hover:border-slate-700 transition">
-                                <input type="checkbox" id="host-one-prize-rule" class="w-4 h-4 accent-indigo-500 rounded border-slate-700">
-                                <div>
-                                    <span class="block text-sm font-bold text-slate-200">Allow only one prize per ticket</span>
-                                    <span class="block text-xs text-slate-400">Once a ticket wins a prize, it cannot win another</span>
-                                </div>
-                            </label>
                         </div>
                     </div>
 
@@ -266,9 +258,6 @@
                             <p id="number-nickname-display" class="text-base sm:text-lg font-extrabold text-white mt-1">
                                 Waiting for first number...
                             </p>
-                            <p id="room-rule-indicator" class="hidden text-xs font-semibold text-amber-400 mt-0.5">
-                                Rule Active: Max 1 prize per ticket
-                            </p>
                         </div>
                     </div>
 
@@ -310,18 +299,9 @@
             <div id="tab-host" class="hidden space-y-5">
                 <!-- Host Controls Card -->
                 <div class="bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl space-y-4">
-                    <div class="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                            <h3 class="text-base font-extrabold text-white">Caller Controls</h3>
-                            <p class="text-xs text-slate-400">Draw the next random number, enter a manual draw, or toggle auto-caller.</p>
-                        </div>
-
-                        <!-- Live Rule Toggle -->
-                        <label class="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:border-slate-700">
-                            <input type="checkbox" id="live-one-prize-toggle" onchange="toggleOnePrizeRule(this.checked)"
-                                class="w-4 h-4 accent-indigo-500 rounded border-slate-700">
-                            <span class="text-xs font-bold text-slate-200">Max 1 Prize Per Ticket</span>
-                        </label>
+                    <div>
+                        <h3 class="text-base font-extrabold text-white">Caller Controls</h3>
+                        <p class="text-xs text-slate-400">Draw the next random number, enter a manual draw, or toggle auto-caller.</p>
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -503,7 +483,6 @@
         let currentNumber = null;
         let claimsStatus = {}; // { "Early 5": { winnerName, ticketName, ticketId, winnerUid } }
         let roomPlayers = {}; // { playerKey: { name, tickets: [{ id, name, grid }] } }
-        let onePrizePerTicket = false;
         let isAutoMarkEnabled = true;
         let isVoiceEnabled = true;
         let autoCallerInterval = null;
@@ -839,8 +818,6 @@
                 isHost = true;
                 isOfflinePractice = false;
                 roomCode = generateRoomCode();
-                onePrizePerTicket = document.getElementById("host-one-prize-rule").checked;
-
                 const tktCount = parseInt(document.getElementById("host-ticket-count").value, 10) || 0;
                 tickets = [];
                 for (let i = 0; i < tktCount; i++) {
@@ -858,7 +835,6 @@
                     calledNumbers: [],
                     currentNumber: null,
                     claims: {},
-                    onePrizePerTicket,
                     createdAt: serverTimestamp()
                 });
 
@@ -889,7 +865,6 @@
             isHost = true;
             isOfflinePractice = true;
             roomCode = "SOLO90";
-            onePrizePerTicket = document.getElementById("host-one-prize-rule").checked;
 
             const tktCount = Math.max(1, parseInt(document.getElementById("host-ticket-count").value, 10) || 2);
             tickets = [];
@@ -1019,7 +994,6 @@
                     calledNumbers = Array.isArray(data.calledNumbers) ? data.calledNumbers : [];
                     currentNumber = data.currentNumber ?? (calledNumbers.length ? calledNumbers[calledNumbers.length - 1] : null);
                     claimsStatus = data.claims || {};
-                    onePrizePerTicket = Boolean(data.onePrizePerTicket);
 
                     // Clear local daubs if host reset the board
                     if (prevLen > 0 && calledNumbers.length === 0) {
@@ -1116,26 +1090,6 @@
                     btn.classList.add("text-slate-400", "hover:text-white");
                 }
             });
-        };
-
-        // Host Action: Toggle One Prize Per Ticket Rule
-        window.toggleOnePrizeRule = async function(enabled) {
-            if (!isHost) return;
-            onePrizePerTicket = Boolean(enabled);
-            saveSessionState();
-
-            if (isOfflinePractice) {
-                renderAll();
-                return;
-            }
-
-            try {
-                await updateDoc(getRoomDocRef(roomCode), {
-                    onePrizePerTicket
-                });
-            } catch (err) {
-                console.error("Failed to toggle rule:", err);
-            }
         };
 
         // Host Action: Draw Next Random Number
@@ -1343,25 +1297,7 @@
             return won;
         }
 
-        function hasTicketWonAnyPrize(ticketId, pName, tName, claimsObj) {
-            for (const winInfo of Object.values(claimsObj || {})) {
-                if (!winInfo) continue;
-                if (winInfo.ticketId && ticketId) {
-                    if (winInfo.ticketId === ticketId) return true;
-                } else if (
-                    normalizePlayerKey(winInfo.winnerName || "") === normalizePlayerKey(pName || "") &&
-                    winInfo.ticketName === tName
-                ) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        function getEligibleUnclaimedPrizesForGrid(grid, ticketId, ownerName, tName) {
-            if (onePrizePerTicket && hasTicketWonAnyPrize(ticketId, ownerName, tName, claimsStatus)) {
-                return [];
-            }
+        function getEligibleUnclaimedPrizesForGrid(grid) {
             const calledSet = new Set(calledNumbers);
             const eligible = [];
             for (const p of PRIZE_DEFINITIONS) {
@@ -1388,15 +1324,6 @@
             const selectEl = document.getElementById("claim-ticket-select");
             const targetId = explicitTicketId || (selectEl ? selectEl.value : tickets[0].id);
             const tkt = tickets.find(t => t.id === targetId) || tickets[0];
-
-            if (onePrizePerTicket && getTicketWonPrizes(tkt).length > 0) {
-                showModal(
-                    "🔒",
-                    "Ticket Limit Reached",
-                    `The host enabled "Max 1 Prize Per Ticket", and ${tkt.name} has already won a prize.`
-                );
-                return;
-            }
 
             const calledSet = new Set(calledNumbers);
             const isValid = verifyPatternOnGrid(tkt.grid, prizeName, calledSet);
@@ -1440,9 +1367,6 @@
                     if (serverClaims[prizeName]) {
                         throw new Error(`ALREADY_CLAIMED:${serverClaims[prizeName].winnerName}`);
                     }
-                    if (data.onePrizePerTicket && hasTicketWonAnyPrize(tkt.id, playerName, tkt.name, serverClaims)) {
-                        throw new Error("ONE_PRIZE_LIMIT");
-                    }
                     if (!verifyPatternOnGrid(tkt.grid, prizeName, serverCalledSet)) {
                         throw new Error("INVALID_PATTERN");
                     }
@@ -1459,8 +1383,6 @@
                 if (msg.startsWith("ALREADY_CLAIMED:")) {
                     const winner = msg.split(":")[1] || "another player";
                     showModal("⚡", "Just Missed It!", `${prizeName} was claimed a split-second earlier by ${winner}!`);
-                } else if (msg === "ONE_PRIZE_LIMIT") {
-                    showModal("🔒", "Ticket Limit Reached", `${tkt.name} has already won a prize under the 1-prize-per-ticket rule.`);
                 } else {
                     console.error("Claim transaction error:", err);
                     showModal("⚠️", "Claim Could Not Be Processed", msg || "Please try again.");
@@ -1482,16 +1404,6 @@
             } else {
                 nicknameEl.textContent = "Waiting for first number...";
             }
-
-            // Rule Indicator & Host Toggle Sync
-            const ruleIndicator = document.getElementById("room-rule-indicator");
-            const liveToggle = document.getElementById("live-one-prize-toggle");
-            if (onePrizePerTicket) {
-                ruleIndicator.classList.remove("hidden");
-            } else {
-                ruleIndicator.classList.add("hidden");
-            }
-            if (liveToggle) liveToggle.checked = onePrizePerTicket;
 
             // Recent 5 Numbers
             const recentContainer = document.getElementById("recent-numbers-list");
@@ -1568,8 +1480,7 @@
 
             container.innerHTML = tickets.map(tkt => {
                 const wonPrizes = getTicketWonPrizes(tkt);
-                const isLockedByRule = onePrizePerTicket && wonPrizes.length > 0;
-                const eligiblePrizes = getEligibleUnclaimedPrizesForGrid(tkt.grid, tkt.id, playerName, tkt.name);
+                const eligiblePrizes = getEligibleUnclaimedPrizesForGrid(tkt.grid);
                 const markedCount = Array.from(tkt.daubed || []).length;
 
                 let gridHtml = "";
@@ -1612,7 +1523,6 @@
                     wonBadgeHtml = `
                         <div class="mt-2.5 flex flex-wrap items-center gap-1.5">
                             ${wonPrizes.map(wp => `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">🏆 Won ${escapeHtml(wp)}</span>`).join("")}
-                            ${isLockedByRule ? `<span class="text-[11px] font-semibold text-slate-400">(1 Prize / Ticket limit reached)</span>` : ""}
                         </div>`;
                 }
 
@@ -1651,7 +1561,7 @@
             const eligibleItems = [];
             for (const pObj of Object.values(playersSource)) {
                 for (const t of (pObj.tickets || [])) {
-                    const prizes = getEligibleUnclaimedPrizesForGrid(t.grid, t.id, pObj.name, t.name);
+                    const prizes = getEligibleUnclaimedPrizesForGrid(t.grid);
                     if (prizes.length > 0) {
                         eligibleItems.push({
                             playerName: pObj.name,
@@ -1707,9 +1617,7 @@
                     selectEl.innerHTML = `<option value="">No tickets available</option>`;
                 } else {
                     selectEl.innerHTML = tickets.map(t => {
-                        const won = getTicketWonPrizes(t);
-                        const locked = onePrizePerTicket && won.length > 0;
-                        return `<option value="${t.id}" ${locked ? "disabled" : ""}>${escapeHtml(t.name)}${locked ? ` (Locked - Won ${won[0]})` : ""}</option>`;
+                        return `<option value="${t.id}">${escapeHtml(t.name)}</option>`;
                     }).join("");
                     if (prevVal && tickets.some(t => t.id === prevVal)) {
                         selectEl.value = prevVal;
