@@ -1,85 +1,1830 @@
-<!-- ... existing code ... -->
-                if (currentNumber && currentNumber !== prevCurrent && !isHost) {
-                    announceNumber(currentNumber);
-                }
-
-                // Clear local daubs if host reset the board to 0 called numbers
-                if (calledNumbers.length === 0 && tickets.some(t => t.daubed && t.daubed.size > 0)) {
-                    tickets.forEach(t => t.daubed.clear());
-                    saveSessionState();
-                }
-
-                if (isAutoMarkEnabled) {
-                    applyAutoMarkToTickets();
-                }
-<!-- ... existing code ... -->
-        function getTicketWonPrizes(tkt) {
-            if (!tkt) return [];
-            return Object.entries(claimsStatus)
-                .filter(([, win]) => win && (
-                    (win.ticketId && tkt.id && win.ticketId === tkt.id) ||
-                    (!win.ticketId && win.winnerName === playerName && win.ticketName === tkt.name)
-                ))
-                .map(([prize]) => prize);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tambola Live - Multiplayer Housie</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #090d16;
+            color: #f8fafc;
         }
-<!-- ... existing code ... -->
-            if (!isOfflinePractice && db && roomCode) {
-                try {
-                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'tambola_rooms', roomCode);
-                    await runTransaction(db, async (transaction) => {
-                        const freshSnap = await transaction.get(roomRef);
-                        if (!freshSnap.exists()) throw new Error("Room no longer exists.");
-                        const freshData = freshSnap.data();
-                        const freshClaims = freshData.claims || {};
-                        if (freshClaims[prizeName]) {
-                            throw new Error(`ALREADY_CLAIMED:${freshClaims[prizeName].winnerName}`);
-                        }
-                        if (freshData.onePrizePerTicket) {
-                            const alreadyWon = Object.values(freshClaims).some(
-                                w => w && w.ticketId && w.ticketId === tkt.id
-                            );
-                            if (alreadyWon) {
-                                throw new Error("ONE_PRIZE_LIMIT");
-                            }
-                        }
-                        transaction.update(roomRef, { [`claims.${prizeName}`]: winRecord });
-                    });
-                } catch (err) {
-                    delete claimsStatus[prizeName];
-                    updateAllRoomUI();
-                    if (err.message && err.message.startsWith("ALREADY_CLAIMED:")) {
-                        const firstWinner = err.message.split(":")[1];
-                        showModal('⚠️', 'Just Claimed!', `${firstWinner} claimed ${prizeName} a split second earlier!`);
-                    } else if (err.message === "ONE_PRIZE_LIMIT") {
-                        showModal('⚠️', 'One Prize Per Ticket Rule', `"${tkt.name}" has already won a prize and cannot claim another.`);
-                    } else {
-                        console.error("Claim sync failed:", err);
-                        showModal('⚠️', 'Claim Error', 'Could not verify claim with server. Please try again.');
+        /* Ticket Grid & Cell Animations */
+        .ticket-cell {
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            user-select: none;
+        }
+        .ticket-cell.daubed {
+            background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+            color: #ffffff;
+            transform: scale(0.95);
+            box-shadow: 0 0 12px rgba(99, 102, 241, 0.45), inset 0 2px 4px rgba(0, 0, 0, 0.25);
+            border-color: #818cf8;
+        }
+        .master-cell {
+            transition: all 0.25s ease;
+        }
+        .master-cell.called {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+            color: #ffffff;
+            font-weight: 800;
+            border-color: #34d399;
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+        }
+        .master-cell.latest {
+            background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+            color: #ffffff;
+            font-weight: 900;
+            border-color: #fbbf24;
+            transform: scale(1.1);
+            z-index: 10;
+            box-shadow: 0 4px 14px rgba(245, 158, 11, 0.55);
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.7); opacity: 0; }
+            70% { transform: scale(1.08); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop {
+            animation: popIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+        @keyframes confettiFall {
+            0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        }
+        .confetti-piece {
+            position: fixed;
+            top: -10px;
+            width: 10px;
+            height: 10px;
+            z-index: 9999;
+            pointer-events: none;
+            animation: confettiFall 3s linear forwards;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-950 text-slate-100">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 shadow-lg">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-indigo-500/25">
+                    90
+                </div>
+                <div>
+                    <h1 class="text-lg font-extrabold tracking-tight text-white leading-none">Housie Online</h1>
+                    <p class="text-[11px] font-medium text-slate-400 mt-0.5" id="connection-status">Connecting...</p>
+                </div>
+            </div>
+
+            <!-- Room Controls when inside an active room -->
+            <div id="header-room-info" class="hidden flex items-center gap-2 sm:gap-3">
+                <button onclick="copyRoomCode()" title="Click to copy Room Code"
+                    class="flex items-center gap-1.5 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition">
+                    <span>Room:</span>
+                    <span id="header-room-code" class="font-mono tracking-wider text-indigo-200">------</span>
+                    <svg class="w-3.5 h-3.5 opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                </button>
+
+                <button onclick="toggleVoice()" id="voice-toggle-btn" title="Toggle Voice Callout"
+                    class="p-2 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
+                    <svg id="voice-icon-on" class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path>
+                    </svg>
+                    <svg id="voice-icon-off" class="w-4 h-4 text-slate-500 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"></path>
+                    </svg>
+                </button>
+
+                <button onclick="leaveRoom()"
+                    class="px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs sm:text-sm font-semibold transition">
+                    Leave
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
+
+        <!-- Resume Previous Session Banner (shown if saved session exists) -->
+        <div id="resume-banner" class="hidden mb-6 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+            <div>
+                <p class="text-sm font-bold text-amber-300">Active Session Found</p>
+                <p class="text-xs text-amber-200/80 mt-0.5" id="resume-banner-text">You were previously in room ------.</p>
+            </div>
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+                <button onclick="resumeSavedSession()" class="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold shadow-sm transition">
+                    Reconnect Now
+                </button>
+                <button onclick="discardSavedSession()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition">
+                    Dismiss
+                </button>
+            </div>
+        </div>
+
+        <!-- VIEW 1: LANDING LOBBY -->
+        <section id="lobby-view" class="max-w-4xl mx-auto">
+            <div class="text-center mb-8">
+                <span class="inline-block px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 text-xs font-bold tracking-wide uppercase mb-2">
+                    Classic 90-Ball Housie
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-black text-white tracking-tight">Play Tambola Together</h2>
+                <p class="text-slate-400 text-sm sm:text-base mt-2 max-w-xl mx-auto">
+                    Host a live room with automatic voice callouts, real-time ticket validation, and instant prize verification—or practice solo anytime.
+                </p>
+            </div>
+
+            <!-- Player Name Input -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl mb-6 max-w-md mx-auto">
+                <label for="player-name-input" class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                    Your Display Name
+                </label>
+                <input type="text" id="player-name-input" placeholder="e.g., Alex" maxlength="20"
+                    class="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25 outline-none font-semibold text-white placeholder-slate-500 transition">
+            </div>
+
+            <!-- Two-Column Action Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Host a Game Card -->
+                <div class="bg-slate-900 rounded-2xl border border-slate-800 p-6 shadow-xl flex flex-col justify-between">
+                    <div>
+                        <div class="w-11 h-11 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-extrabold text-white">Host a New Room</h3>
+                        <p class="text-sm text-slate-400 mt-1 mb-5">
+                            Control the caller board, draw numbers manually or automatically, and verify claims.
+                        </p>
+
+                        <div class="space-y-4 mb-6">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-400 mb-1.5">Host Playing Tickets</label>
+                                <select id="host-ticket-count" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm font-semibold text-slate-100 focus:border-indigo-500 outline-none">
+                                    <option value="0">0 Tickets (Caller Only)</option>
+                                    <option value="1" selected>1 Ticket</option>
+                                    <option value="2">2 Tickets</option>
+                                    <option value="3">3 Tickets</option>
+                                </select>
+                            </div>
+
+                            <label class="flex items-center gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer hover:border-slate-700 transition">
+                                <input type="checkbox" id="host-one-prize-rule" class="w-4 h-4 accent-indigo-500 rounded border-slate-700">
+                                <div>
+                                    <span class="block text-sm font-bold text-slate-200">Allow only one prize per ticket</span>
+                                    <span class="block text-xs text-slate-400">Once a ticket wins a prize, it cannot win another</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2.5">
+                        <button onclick="createMultiplayerRoom()" id="create-room-btn"
+                            class="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] text-white font-bold text-sm shadow-lg shadow-indigo-600/25 transition">
+                            Create Multiplayer Room
+                        </button>
+                        <button onclick="startOfflinePractice()"
+                            class="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-semibold text-xs transition">
+                            Start Offline Solo Practice
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Join a Room Card -->
+                <div class="bg-slate-900 rounded-2xl border border-slate-800 p-6 shadow-xl flex flex-col justify-between">
+                    <div>
+                        <div class="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-extrabold text-white">Join Existing Room</h3>
+                        <p class="text-sm text-slate-400 mt-1 mb-5">
+                            Enter the 6-character room code shared by your host and select how many tickets you want to play.
+                        </p>
+
+                        <div class="space-y-4 mb-6">
+                            <div>
+                                <label for="join-room-code" class="block text-xs font-bold text-slate-400 mb-1.5">Room Code</label>
+                                <input type="text" id="join-room-code" placeholder="e.g., AB12CD" maxlength="6"
+                                    class="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/25 outline-none font-mono uppercase tracking-widest font-bold text-white placeholder-slate-500 transition">
+                            </div>
+
+                            <div>
+                                <label for="player-ticket-count" class="block text-xs font-bold text-slate-400 mb-1.5">Number of Tickets</label>
+                                <select id="player-ticket-count" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm font-semibold text-slate-100 focus:border-emerald-500 outline-none">
+                                    <option value="1">1 Ticket</option>
+                                    <option value="2" selected>2 Tickets</option>
+                                    <option value="3">3 Tickets</option>
+                                    <option value="4">4 Tickets</option>
+                                    <option value="6">6 Tickets (Full Sheet)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button onclick="joinMultiplayerRoom()" id="join-room-btn"
+                        class="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-bold text-sm shadow-lg shadow-emerald-600/25 transition">
+                        Join Room
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 2: ACTIVE GAME ROOM -->
+        <section id="room-view" class="hidden space-y-5">
+
+            <!-- Top Status Banner: Current Called Number & Recent History -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 p-4 sm:p-5 shadow-xl">
+                <div class="flex flex-col md:flex-row items-center justify-between gap-4">
+                    <!-- Latest Number Callout -->
+                    <div class="flex items-center gap-4">
+                        <div id="latest-number-ball"
+                            class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex flex-col items-center justify-center shadow-lg shadow-amber-500/25 shrink-0">
+                            <span class="text-[10px] font-bold uppercase tracking-wider opacity-90">Current</span>
+                            <span id="current-number-display" class="text-3xl sm:text-4xl font-black leading-none">--</span>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span id="role-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                    Player
+                                </span>
+                                <span class="text-xs font-semibold text-slate-400">
+                                    Called: <strong id="called-count-display" class="text-white">0</strong> / 90
+                                </span>
+                            </div>
+                            <p id="number-nickname-display" class="text-base sm:text-lg font-extrabold text-white mt-1">
+                                Waiting for first number...
+                            </p>
+                            <p id="room-rule-indicator" class="hidden text-xs font-semibold text-amber-400 mt-0.5">
+                                Rule Active: Max 1 prize per ticket
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Last 5 Called Numbers -->
+                    <div class="w-full md:w-auto flex flex-col items-center md:items-end">
+                        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Recent Numbers</span>
+                        <div id="recent-numbers-list" class="flex items-center gap-1.5">
+                            <span class="w-9 h-9 rounded-xl bg-slate-800 text-slate-500 border border-slate-700 flex items-center justify-center text-xs font-bold">-</span>
+                            <span class="w-9 h-9 rounded-xl bg-slate-800 text-slate-500 border border-slate-700 flex items-center justify-center text-xs font-bold">-</span>
+                            <span class="w-9 h-9 rounded-xl bg-slate-800 text-slate-500 border border-slate-700 flex items-center justify-center text-xs font-bold">-</span>
+                            <span class="w-9 h-9 rounded-xl bg-slate-800 text-slate-500 border border-slate-700 flex items-center justify-center text-xs font-bold">-</span>
+                            <span class="w-9 h-9 rounded-xl bg-slate-800 text-slate-500 border border-slate-700 flex items-center justify-center text-xs font-bold">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <div class="flex items-center gap-2 bg-slate-900 border border-slate-800 p-1.5 rounded-2xl overflow-x-auto">
+                <button onclick="switchTab('host')" id="tab-btn-host"
+                    class="hidden flex-1 py-2 px-4 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap">
+                    Host Board
+                </button>
+                <button onclick="switchTab('tickets')" id="tab-btn-tickets"
+                    class="flex-1 py-2 px-4 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap">
+                    My Tickets (<span id="tab-ticket-count">0</span>)
+                </button>
+                <button onclick="switchTab('board')" id="tab-btn-board"
+                    class="flex-1 py-2 px-4 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap">
+                    1–90 Board
+                </button>
+                <button onclick="switchTab('claims')" id="tab-btn-claims"
+                    class="flex-1 py-2 px-4 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap">
+                    Prizes & Claims
+                </button>
+            </div>
+
+            <!-- TAB 1: HOST BOARD (Visible to Host Only) -->
+            <div id="tab-host" class="hidden space-y-5">
+                <!-- Host Controls Card -->
+                <div class="bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl space-y-4">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h3 class="text-base font-extrabold text-white">Caller Controls</h3>
+                            <p class="text-xs text-slate-400">Draw the next random number, enter a manual draw, or toggle auto-caller.</p>
+                        </div>
+
+                        <!-- Live Rule Toggle -->
+                        <label class="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:border-slate-700">
+                            <input type="checkbox" id="live-one-prize-toggle" onchange="toggleOnePrizeRule(this.checked)"
+                                class="w-4 h-4 accent-indigo-500 rounded border-slate-700">
+                            <span class="text-xs font-bold text-slate-200">Max 1 Prize Per Ticket</span>
+                        </label>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <button onclick="drawNumber()" id="draw-number-btn"
+                            class="py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] text-white font-extrabold text-sm shadow-lg shadow-indigo-600/25 transition flex items-center justify-center gap-2">
+                            <span>Draw Next Number</span>
+                        </button>
+
+                        <!-- Manual Draw Input -->
+                        <div class="flex items-center gap-1.5">
+                            <input type="number" id="manual-draw-input" min="1" max="90" placeholder="1–90"
+                                onkeydown="if(event.key==='Enter') manualDrawNumber()"
+                                class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 text-sm font-bold text-center focus:border-indigo-500 outline-none">
+                            <button onclick="manualDrawNumber()"
+                                class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 text-xs font-bold whitespace-nowrap transition">
+                                Call #
+                            </button>
+                        </div>
+
+                        <button onclick="toggleAutoCaller()" id="auto-caller-btn"
+                            class="py-2.5 px-4 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold text-xs sm:text-sm transition">
+                            Auto-Call: OFF (5s)
+                        </button>
+
+                        <button onclick="confirmResetRoom()"
+                            class="py-2.5 px-4 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 font-bold text-xs sm:text-sm transition">
+                            Reset Game
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Live Prize & Eligibility Monitor for Host -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    <!-- Eligible Tickets Alert Box -->
+                    <div class="bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl">
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-sm font-extrabold text-white">Eligible Tickets (Unclaimed Prizes)</h4>
+                            <span id="eligible-count-badge" class="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">0</span>
+                        </div>
+                        <div id="host-eligible-list" class="space-y-2 max-h-52 overflow-y-auto">
+                            <p class="text-xs text-slate-500 italic">No tickets eligible for open prizes yet.</p>
+                        </div>
+                    </div>
+
+                    <!-- Prize Claim Status Summary -->
+                    <div class="bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl">
+                        <h4 class="text-sm font-extrabold text-white mb-3">Prize Claim Status</h4>
+                        <div id="host-prize-status-list" class="space-y-2">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Host's Own Playing Tickets (if host has tickets > 0) -->
+                <div id="host-own-tickets-section" class="hidden bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl space-y-4">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <h4 class="text-sm font-extrabold text-white">Host's Playing Tickets</h4>
+                            <p class="text-xs text-slate-400">Tap numbers to daub or claim eligible prizes directly.</p>
+                        </div>
+                        <button onclick="toggleAutoMark()" class="auto-mark-toggle-btn px-3 py-1.5 rounded-xl text-xs font-bold border transition">
+                            Auto-Mark: ON
+                        </button>
+                    </div>
+                    <div id="host-tickets-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                </div>
+
+                <!-- Host Master 1-90 Board -->
+                <div class="bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl">
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="text-sm font-extrabold text-white">Master Caller Board (1–90)</h4>
+                        <span class="text-xs font-semibold text-slate-400" id="connected-players-count">1 player connected</span>
+                    </div>
+                    <div id="host-master-grid" class="grid grid-cols-10 gap-1.5 sm:gap-2"></div>
+                </div>
+            </div>
+
+            <!-- TAB 2: MY TICKETS -->
+            <div id="tab-tickets" class="space-y-4">
+                <div class="bg-slate-900 rounded-2xl border border-slate-800 p-4 shadow-xl flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h3 class="text-base font-extrabold text-white">Your Tambola Tickets</h3>
+                        <p class="text-xs text-slate-400">Numbers highlight automatically when Auto-Mark is on, or tap any called number to daub.</p>
+                    </div>
+                    <button onclick="toggleAutoMark()" class="auto-mark-toggle-btn px-3.5 py-2 rounded-xl text-xs font-bold border transition">
+                        Auto-Mark: ON
+                    </button>
+                </div>
+
+                <div id="player-tickets-container" class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <!-- Tickets rendered here -->
+                </div>
+            </div>
+
+            <!-- TAB 3: 1-90 BOARD (Player View) -->
+            <div id="tab-board" class="hidden">
+                <div class="bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 class="text-base font-extrabold text-white">Called Numbers Board (1–90)</h3>
+                            <p class="text-xs text-slate-400">Green numbers have been called; amber indicates the latest call.</p>
+                        </div>
+                        <span class="text-xs font-bold text-indigo-400" id="board-called-summary">0 / 90 Called</span>
+                    </div>
+                    <div id="player-master-grid" class="grid grid-cols-10 gap-1.5 sm:gap-2"></div>
+                </div>
+            </div>
+
+            <!-- TAB 4: PRIZES & CLAIMS -->
+            <div id="tab-claims" class="hidden space-y-5">
+                <!-- Manual Claim Selector -->
+                <div class="bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl">
+                    <h3 class="text-base font-extrabold text-white mb-1">Verify & Claim a Prize</h3>
+                    <p class="text-xs text-slate-400 mb-4">Select your ticket and click a prize below to verify your pattern against called numbers.</p>
+
+                    <div class="mb-4 max-w-sm">
+                        <label for="claim-ticket-select" class="block text-xs font-bold text-slate-400 mb-1">Select Ticket</label>
+                        <select id="claim-ticket-select" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm font-semibold text-white outline-none">
+                        </select>
+                    </div>
+
+                    <div id="prizes-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- Prize Cards injected dynamically -->
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- Custom Non-Blocking Modal Dialog (Replaces alert / confirm) -->
+    <div id="app-modal" class="hidden fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4">
+        <div class="bg-slate-900 rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-700 animate-pop text-center">
+            <div id="modal-emoji" class="text-4xl mb-3">🎉</div>
+            <h3 id="modal-title" class="text-lg font-extrabold text-white">Notice</h3>
+            <p id="modal-message" class="text-sm text-slate-300 mt-2 leading-relaxed"></p>
+            <div id="modal-actions" class="mt-5 flex items-center justify-center gap-2.5">
+                <button onclick="closeModal()" class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">
+                    Got it
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase & Game Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import {
+            getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot,
+            collection, serverTimestamp, runTransaction
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Your Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCgQ27fdHpO13OQ9V5fNIwktY_1Ezm7UQc",
+            authDomain: "online-housie-a4eb3.firebaseapp.com",
+            projectId: "online-housie-a4eb3",
+            storageBucket: "online-housie-a4eb3.firebasestorage.app",
+            messagingSenderId: "629233623023",
+            appId: "1:629233623023:web:90d6f4aa8a0aaeaa04a01a"
+        };
+
+        const APP_ID = "Housie";
+        const STORAGE_KEY = "tambola_live_session_v2";
+
+        let app = null;
+        let auth = null;
+        let db = null;
+        let currentUser = null;
+
+        // Game State
+        let roomCode = "";
+        let isHost = false;
+        let isOfflinePractice = false;
+        let playerName = "";
+        let tickets = []; // [{ id, name, grid: 3x9, daubed: Set }]
+        let calledNumbers = [];
+        let currentNumber = null;
+        let claimsStatus = {}; // { "Early 5": { winnerName, ticketName, ticketId, winnerUid } }
+        let roomPlayers = {}; // { playerKey: { name, tickets: [{ id, name, grid }] } }
+        let onePrizePerTicket = false;
+        let isAutoMarkEnabled = true;
+        let isVoiceEnabled = true;
+        let autoCallerInterval = null;
+        let roomUnsubscribe = null;
+        let playersUnsubscribe = null;
+        let lastSpokenNumber = null;
+
+        const PRIZE_DEFINITIONS = [
+            { id: "Early 5", name: "Early 5", desc: "Any 5 numbers on your ticket" },
+            { id: "Top Line", name: "Top Line", desc: "All 5 numbers in the top row" },
+            { id: "Middle Line", name: "Middle Line", desc: "All 5 numbers in the middle row" },
+            { id: "Bottom Line", name: "Bottom Line", desc: "All 5 numbers in the bottom row" },
+            { id: "Full House", name: "Full House", desc: "All 15 numbers on your ticket" }
+        ];
+
+        const NUMBER_CALLOUTS = {
+            1: "Kelly's eye, number 1",
+            2: "One little duck, number 2",
+            3: "Cup of tea, number 3",
+            4: "Knock at the door, number 4",
+            5: "Man alive, number 5",
+            6: "Tom Mix, number 6",
+            7: "Lucky seven, number 7",
+            8: "Garden gate, number 8",
+            9: "Doctor's orders, number 9",
+            10: "Prime Minister's den, number 10",
+            11: "Legs eleven, 11",
+            12: "One dozen, 12",
+            13: "Unlucky for some, 13",
+            14: "Valentine's Day, 14",
+            15: "Young and keen, 15",
+            16: "Sweet sixteen, 16",
+            17: "Dancing queen, 17",
+            18: "Coming of age, 18",
+            19: "Goodbye teens, 19",
+            20: "One score, 20",
+            21: "Royal salute, 21",
+            22: "Two little ducks, 22",
+            25: "Duck and dive, 25",
+            30: "Dirty Gertie, 30",
+            33: "All the threes, 33",
+            40: "Life begins, 40",
+            44: "Droopy drawers, 44",
+            50: "Half a century, 50",
+            55: "Snakes alive, 55",
+            60: "Five dozen, 60",
+            66: "Clickety click, 66",
+            70: "Three score and ten, 70",
+            77: "Sunset strip, 77",
+            80: "Eight and blank, 80",
+            88: "Two fat ladies, 88",
+            89: "Nearly there, 89",
+            90: "Top of the shop, 90"
+        };
+
+        // Initialize Firebase safely
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    currentUser = user;
+                    updateConnectionStatus("Connected • Ready", "text-emerald-400");
+                }
+            });
+
+            signInAnonymously(auth).catch((err) => {
+                console.warn("Anonymous auth warning:", err);
+                updateConnectionStatus("Offline / Local Ready", "text-amber-400");
+            });
+        } catch (err) {
+            console.error("Firebase init error:", err);
+            updateConnectionStatus("Offline Mode", "text-amber-400");
+        }
+
+        function updateConnectionStatus(text, colorClass) {
+            const el = document.getElementById("connection-status");
+            if (el) {
+                el.textContent = text;
+                el.className = `text-[11px] font-semibold mt-0.5 ${colorClass}`;
+            }
+        }
+
+        // Firestore Path Helpers
+        function getRoomDocRef(code) {
+            return doc(db, "artifacts", APP_ID, "public", "data", "rooms", code);
+        }
+
+        function getPlayerDocRef(code, pKey) {
+            return doc(db, "artifacts", APP_ID, "public", "data", "rooms", code, "players", pKey);
+        }
+
+        function getPlayersColRef(code) {
+            return collection(db, "artifacts", APP_ID, "public", "data", "rooms", code, "players");
+        }
+
+        function normalizePlayerKey(name) {
+            return name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_") || "player";
+        }
+
+        // Generate Valid 90-Ball Tambola Ticket (3x9, 15 numbers, 5 per row, 1-3 per col, sorted cols)
+        function generateTambolaTicket(index) {
+            while (true) {
+                const grid = Array.from({ length: 3 }, () => Array(9).fill(0));
+                const colCounts = Array(9).fill(0);
+
+                // Pick 5 distinct columns for each of the 3 rows
+                for (let r = 0; r < 3; r++) {
+                    const cols = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+                    for (let i = cols.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [cols[i], cols[j]] = [cols[j], cols[i]];
                     }
+                    const chosen = cols.slice(0, 5);
+                    for (const c of chosen) {
+                        grid[r][c] = 1;
+                        colCounts[c]++;
+                    }
+                }
+
+                // Ensure every column has at least 1 number
+                if (colCounts.some(count => count === 0)) continue;
+
+                // Fill each column with sorted unique numbers from its decade
+                for (let c = 0; c < 9; c++) {
+                    const min = c === 0 ? 1 : c * 10;
+                    const max = c === 8 ? 90 : c * 10 + 9;
+                    const pool = [];
+                    for (let n = min; n <= max; n++) pool.push(n);
+
+                    for (let i = pool.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [pool[i], pool[j]] = [pool[j], pool[i]];
+                    }
+
+                    const selectedNums = pool.slice(0, colCounts[c]).sort((a, b) => a - b);
+                    let idx = 0;
+                    for (let r = 0; r < 3; r++) {
+                        if (grid[r][c] === 1) {
+                            grid[r][c] = selectedNums[idx++];
+                        }
+                    }
+                }
+
+                return {
+                    id: `tkt_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 6)}`,
+                    name: `Ticket #${index + 1}`,
+                    grid,
+                    daubed: new Set()
+                };
+            }
+        }
+
+        function serializeTickets(tktList) {
+            return tktList.map(t => ({
+                id: t.id,
+                name: t.name,
+                grid: t.grid,
+                daubed: Array.from(t.daubed || [])
+            }));
+        }
+
+        function deserializeTickets(rawList) {
+            if (!Array.isArray(rawList)) return [];
+            return rawList.map((t, idx) => ({
+                id: t.id || `tkt_restored_${idx}`,
+                name: t.name || `Ticket #${idx + 1}`,
+                grid: t.grid,
+                daubed: new Set(Array.isArray(t.daubed) ? t.daubed : [])
+            }));
+        }
+
+        // Session Persistence (LocalStorage)
+        function saveSessionState() {
+            if (!roomCode) return;
+            try {
+                const payload = {
+                    roomCode,
+                    isHost,
+                    isOfflinePractice,
+                    playerName,
+                    tickets: serializeTickets(tickets),
+                    calledNumbers: isOfflinePractice ? calledNumbers : [],
+                    claimsStatus: isOfflinePractice ? claimsStatus : {},
+                    onePrizePerTicket,
+                    savedAt: Date.now()
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+            } catch (e) {
+                console.warn("Could not save session locally:", e);
+            }
+        }
+
+        function checkSavedSession() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return;
+                const data = JSON.parse(raw);
+                if (!data || !data.roomCode || !data.playerName) return;
+
+                // Expire sessions older than 12 hours
+                if (Date.now() - (data.savedAt || 0) > 12 * 60 * 60 * 1000) {
+                    localStorage.removeItem(STORAGE_KEY);
                     return;
                 }
+
+                const banner = document.getElementById("resume-banner");
+                const textEl = document.getElementById("resume-banner-text");
+                textEl.textContent = `Room ${data.roomCode} as ${data.playerName} (${data.isHost ? "Host" : "Player"}, ${data.tickets?.length || 0} ticket(s)).`;
+                banner.classList.remove("hidden");
+
+                const nameInput = document.getElementById("player-name-input");
+                if (nameInput && !nameInput.value) {
+                    nameInput.value = data.playerName;
+                }
+            } catch (e) {
+                console.warn("Session check error:", e);
+            }
+        }
+
+        window.discardSavedSession = function() {
+            localStorage.removeItem(STORAGE_KEY);
+            document.getElementById("resume-banner").classList.add("hidden");
+        };
+
+        window.resumeSavedSession = async function() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return;
+                const data = JSON.parse(raw);
+                document.getElementById("resume-banner").classList.add("hidden");
+
+                roomCode = data.roomCode;
+                isHost = Boolean(data.isHost);
+                isOfflinePractice = Boolean(data.isOfflinePractice);
+                playerName = data.playerName;
+                tickets = deserializeTickets(data.tickets);
+                onePrizePerTicket = Boolean(data.onePrizePerTicket);
+
+                if (isOfflinePractice) {
+                    calledNumbers = data.calledNumbers || [];
+                    currentNumber = calledNumbers.length ? calledNumbers[calledNumbers.length - 1] : null;
+                    claimsStatus = data.claimsStatus || {};
+                    enterRoomUI();
+                    return;
+                }
+
+                if (!db) {
+                    showModal("⚠️", "Connection Unavailable", "Database connection is not ready. Please try again.");
+                    return;
+                }
+
+                if (!currentUser && auth) {
+                    try {
+                        const cred = await signInAnonymously(auth);
+                        currentUser = cred.user;
+                    } catch (_) {}
+                }
+
+                const roomSnap = await getDoc(getRoomDocRef(roomCode));
+                if (!roomSnap.exists()) {
+                    localStorage.removeItem(STORAGE_KEY);
+                    showModal("ℹ️", "Room Ended", `Room ${roomCode} no longer exists.`);
+                    return;
+                }
+
+                const rData = roomSnap.data();
+                if (isHost && normalizePlayerKey(rData.hostName || "") === normalizePlayerKey(playerName)) {
+                    await updateDoc(getRoomDocRef(roomCode), {
+                        hostUid: currentUser ? currentUser.uid : (rData.hostUid || "host")
+                    });
+                }
+
+                await syncPlayerTicketsToFirestore();
+                enterRoomUI();
+            } catch (err) {
+                console.error("Resume session error:", err);
+                showModal("⚠️", "Reconnect Failed", err.message || "Unable to restore previous session.");
+            }
+        };
+
+        // Sync Player Tickets to Firestore (so Host can monitor eligibility)
+        async function syncPlayerTicketsToFirestore() {
+            if (isOfflinePractice || !db || !roomCode || !playerName) return;
+            try {
+                const pKey = normalizePlayerKey(playerName);
+                await setDoc(getPlayerDocRef(roomCode, pKey), {
+                    name: playerName,
+                    uid: currentUser ? currentUser.uid : pKey,
+                    tickets: tickets.map(t => ({
+                        id: t.id,
+                        name: t.name,
+                        grid: JSON.stringify(t.grid)
+                    })),
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            } catch (err) {
+                console.warn("Ticket sync warning:", err);
+            }
+        }
+
+        function generateRoomCode() {
+            const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            let code = "";
+            for (let i = 0; i < 6; i++) {
+                code += chars[Math.floor(Math.random() * chars.length)];
+            }
+            return code;
+        }
+
+        // Create Multiplayer Room (Host)
+        window.createMultiplayerRoom = async function() {
+            const nameVal = document.getElementById("player-name-input").value.trim();
+            if (!nameVal) {
+                showModal("👋", "Enter Your Name", "Please enter your display name before creating a room.");
+                return;
             }
 
-            updateAllRoomUI();
-            triggerConfetti();
-            showModal('🏆', `${prizeName} Claimed!`, `Congratulations ${playerName}! "${tkt.name}" won ${prizeName}!`);
+            const btn = document.getElementById("create-room-btn");
+            btn.disabled = true;
+            btn.textContent = "Creating Room...";
+
+            try {
+                if (!db) throw new Error("Firebase is not initialized.");
+                if (!currentUser && auth) {
+                    const cred = await signInAnonymously(auth);
+                    currentUser = cred.user;
+                }
+
+                playerName = nameVal;
+                isHost = true;
+                isOfflinePractice = false;
+                roomCode = generateRoomCode();
+                onePrizePerTicket = document.getElementById("host-one-prize-rule").checked;
+
+                const tktCount = parseInt(document.getElementById("host-ticket-count").value, 10) || 0;
+                tickets = [];
+                for (let i = 0; i < tktCount; i++) {
+                    tickets.push(generateTambolaTicket(i));
+                }
+
+                calledNumbers = [];
+                currentNumber = null;
+                claimsStatus = {};
+
+                await setDoc(getRoomDocRef(roomCode), {
+                    roomCode,
+                    hostName: playerName,
+                    hostUid: currentUser ? currentUser.uid : "host",
+                    calledNumbers: [],
+                    currentNumber: null,
+                    claims: {},
+                    onePrizePerTicket,
+                    createdAt: serverTimestamp()
+                });
+
+                await syncPlayerTicketsToFirestore();
+                saveSessionState();
+                enterRoomUI();
+            } catch (err) {
+                console.error("Create room error:", err);
+                showModal(
+                    "⚠️",
+                    "Could Not Create Online Room",
+                    `Unable to connect to multiplayer server (${err.message || "network/permission error"}). Would you like to start Offline Solo Practice instead?`,
+                    `
+                    <button onclick="closeModal()" class="flex-1 py-2.5 px-4 rounded-xl bg-slate-800 text-slate-200 border border-slate-700 font-bold text-sm">Cancel</button>
+                    <button onclick="closeModal(); startOfflinePractice();" class="flex-1 py-2.5 px-4 rounded-xl bg-indigo-600 text-white font-bold text-sm">Start Practice</button>
+                    `
+                );
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Create Multiplayer Room";
+            }
+        };
+
+        // Start Offline Solo Practice
+        window.startOfflinePractice = function() {
+            const nameVal = document.getElementById("player-name-input").value.trim() || "Solo Player";
+            playerName = nameVal;
+            isHost = true;
+            isOfflinePractice = true;
+            roomCode = "SOLO90";
+            onePrizePerTicket = document.getElementById("host-one-prize-rule").checked;
+
+            const tktCount = Math.max(1, parseInt(document.getElementById("host-ticket-count").value, 10) || 2);
+            tickets = [];
+            for (let i = 0; i < tktCount; i++) {
+                tickets.push(generateTambolaTicket(i));
+            }
+
+            calledNumbers = [];
+            currentNumber = null;
+            claimsStatus = {};
+            saveSessionState();
+            enterRoomUI();
+        };
+
+        // Join Existing Multiplayer Room
+        window.joinMultiplayerRoom = async function() {
+            const nameVal = document.getElementById("player-name-input").value.trim();
+            const codeVal = document.getElementById("join-room-code").value.trim().toUpperCase();
+
+            if (!nameVal) {
+                showModal("👋", "Enter Your Name", "Please enter your display name first.");
+                return;
+            }
+            if (codeVal.length < 4) {
+                showModal("🔑", "Invalid Room Code", "Please enter the 6-character room code shared by your host.");
+                return;
+            }
+
+            const btn = document.getElementById("join-room-btn");
+            btn.disabled = true;
+            btn.textContent = "Joining...";
+
+            try {
+                if (!db) throw new Error("Firebase is not initialized.");
+                if (!currentUser && auth) {
+                    const cred = await signInAnonymously(auth);
+                    currentUser = cred.user;
+                }
+
+                const roomSnap = await getDoc(getRoomDocRef(codeVal));
+                if (!roomSnap.exists()) {
+                    showModal("🔍", "Room Not Found", `No active room found with code "${codeVal}". Check the code and try again.`);
+                    return;
+                }
+
+                const rData = roomSnap.data();
+                playerName = nameVal;
+                roomCode = codeVal;
+                isOfflinePractice = false;
+
+                // Reclaim Host role if same host name reconnects
+                const isReturningHost = normalizePlayerKey(rData.hostName || "") === normalizePlayerKey(playerName);
+                isHost = isReturningHost;
+
+                if (isHost) {
+                    await updateDoc(getRoomDocRef(roomCode), {
+                        hostUid: currentUser ? currentUser.uid : (rData.hostUid || "host")
+                    });
+                }
+
+                // Restore tickets if rejoining same room with same player name
+                let restored = false;
+                try {
+                    const rawSaved = localStorage.getItem(STORAGE_KEY);
+                    if (rawSaved) {
+                        const saved = JSON.parse(rawSaved);
+                        if (saved && saved.roomCode === roomCode && normalizePlayerKey(saved.playerName) === normalizePlayerKey(playerName) && Array.isArray(saved.tickets) && saved.tickets.length > 0) {
+                            tickets = deserializeTickets(saved.tickets);
+                            restored = true;
+                        }
+                    }
+                } catch (_) {}
+
+                if (!restored) {
+                    const tktCount = parseInt(document.getElementById("player-ticket-count").value, 10) || 2;
+                    tickets = [];
+                    for (let i = 0; i < tktCount; i++) {
+                        tickets.push(generateTambolaTicket(i));
+                    }
+                }
+
+                await syncPlayerTicketsToFirestore();
+                saveSessionState();
+                enterRoomUI();
+            } catch (err) {
+                console.error("Join room error:", err);
+                showModal("⚠️", "Unable to Join Room", err.message || "Could not connect to the room.");
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Join Room";
+            }
+        };
+
+        // Enter Active Room UI & Subscribe to Live Updates
+        function enterRoomUI() {
+            document.getElementById("lobby-view").classList.add("hidden");
+            document.getElementById("resume-banner").classList.add("hidden");
+            document.getElementById("room-view").classList.remove("hidden");
+            document.getElementById("header-room-info").classList.remove("hidden");
+            document.getElementById("header-room-code").textContent = roomCode;
+
+            const roleBadge = document.getElementById("role-badge");
+            const tabHostBtn = document.getElementById("tab-btn-host");
+
+            if (isHost) {
+                roleBadge.textContent = isOfflinePractice ? "Solo Host" : "Host";
+                roleBadge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+                tabHostBtn.classList.remove("hidden");
+                switchTab("host");
+            } else {
+                roleBadge.textContent = "Player";
+                roleBadge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+                tabHostBtn.classList.add("hidden");
+                switchTab("tickets");
+            }
+
+            if (!isOfflinePractice && db && roomCode) {
+                if (roomUnsubscribe) roomUnsubscribe();
+                roomUnsubscribe = onSnapshot(getRoomDocRef(roomCode), (snap) => {
+                    if (!snap.exists()) {
+                        showModal("ℹ️", "Room Closed", "The host has closed this game room.");
+                        leaveRoom(true);
+                        return;
+                    }
+                    const data = snap.data();
+                    const prevLen = calledNumbers.length;
+                    calledNumbers = Array.isArray(data.calledNumbers) ? data.calledNumbers : [];
+                    currentNumber = data.currentNumber ?? (calledNumbers.length ? calledNumbers[calledNumbers.length - 1] : null);
+                    claimsStatus = data.claims || {};
+                    onePrizePerTicket = Boolean(data.onePrizePerTicket);
+
+                    // Clear local daubs if host reset the board
+                    if (prevLen > 0 && calledNumbers.length === 0) {
+                        tickets.forEach(t => { t.daubed = new Set(); });
+                    }
+
+                    applyAutoMark();
+                    saveSessionState();
+                    renderAll();
+
+                    if (currentNumber && currentNumber !== lastSpokenNumber) {
+                        lastSpokenNumber = currentNumber;
+                        speakNumber(currentNumber);
+                    }
+                });
+
+                if (playersUnsubscribe) playersUnsubscribe();
+                playersUnsubscribe = onSnapshot(getPlayersColRef(roomCode), (querySnap) => {
+                    const map = {};
+                    querySnap.forEach((docSnap) => {
+                        const pData = docSnap.data();
+                        const parsedTickets = (pData.tickets || []).map(t => ({
+                            id: t.id,
+                            name: t.name,
+                            grid: typeof t.grid === "string" ? JSON.parse(t.grid) : t.grid
+                        }));
+                        map[docSnap.id] = {
+                            name: pData.name || docSnap.id,
+                            tickets: parsedTickets
+                        };
+                    });
+                    roomPlayers = map;
+                    if (isHost) renderHostMonitor();
+                });
+            } else {
+                applyAutoMark();
+                renderAll();
+            }
         }
-<!-- ... existing code ... -->
-            // Update ticket selector dropdown in Claims tab
-            const select = document.getElementById('claim-ticket-select');
-            if (select) {
-                const prevVal = select.value;
-                if (tickets.length === 0) {
-                    select.innerHTML = '<option value="">No tickets (Host spectator mode)</option>';
+
+        // Leave Room
+        window.leaveRoom = function(skipConfirm = false) {
+            if (!skipConfirm) {
+                showModal(
+                    "🚪",
+                    "Leave Room?",
+                    "Are you sure you want to leave this room? You can reconnect later using the session banner.",
+                    `
+                    <button onclick="closeModal()" class="flex-1 py-2.5 px-4 rounded-xl bg-slate-800 text-slate-200 border border-slate-700 font-bold text-sm">Stay</button>
+                    <button onclick="closeModal(); leaveRoom(true);" class="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 text-white font-bold text-sm">Leave</button>
+                    `
+                );
+                return;
+            }
+
+            if (autoCallerInterval) {
+                clearInterval(autoCallerInterval);
+                autoCallerInterval = null;
+            }
+            if (roomUnsubscribe) {
+                roomUnsubscribe();
+                roomUnsubscribe = null;
+            }
+            if (playersUnsubscribe) {
+                playersUnsubscribe();
+                playersUnsubscribe = null;
+            }
+
+            roomCode = "";
+            isHost = false;
+            isOfflinePractice = false;
+            lastSpokenNumber = null;
+
+            document.getElementById("room-view").classList.add("hidden");
+            document.getElementById("header-room-info").classList.add("hidden");
+            document.getElementById("lobby-view").classList.remove("hidden");
+            checkSavedSession();
+        };
+
+        // Tab Switching
+        window.switchTab = function(tabName) {
+            const tabs = ["host", "tickets", "board", "claims"];
+            tabs.forEach(t => {
+                const panel = document.getElementById(`tab-${t}`);
+                const btn = document.getElementById(`tab-btn-${t}`);
+                if (!panel || !btn) return;
+                if (t === tabName) {
+                    panel.classList.remove("hidden");
+                    btn.classList.add("bg-indigo-600", "text-white", "shadow-sm");
+                    btn.classList.remove("text-slate-400", "hover:text-white");
                 } else {
-                    select.innerHTML = tickets.map(t => {
-                        const won = getTicketWonPrizes(t);
-                        const locked = onePrizePerTicket && won.length > 0;
-                        return `<option value="${t.id}" ${locked ? 'disabled' : ''}>${escapeHtml(t.name)}${locked ? ` (Won ${escapeHtml(won[0])} - Locked)` : ''}</option>`;
-                    }).join('');
-                    const validOption = Array.from(select.options).find(o => o.value === prevVal && !o.disabled)
-                        || Array.from(select.options).find(o => !o.disabled);
-                    if (validOption) select.value = validOption.value;
+                    panel.classList.add("hidden");
+                    btn.classList.remove("bg-indigo-600", "text-white", "shadow-sm");
+                    btn.classList.add("text-slate-400", "hover:text-white");
+                }
+            });
+        };
+
+        // Host Action: Toggle One Prize Per Ticket Rule
+        window.toggleOnePrizeRule = async function(enabled) {
+            if (!isHost) return;
+            onePrizePerTicket = Boolean(enabled);
+            saveSessionState();
+
+            if (isOfflinePractice) {
+                renderAll();
+                return;
+            }
+
+            try {
+                await updateDoc(getRoomDocRef(roomCode), {
+                    onePrizePerTicket
+                });
+            } catch (err) {
+                console.error("Failed to toggle rule:", err);
+            }
+        };
+
+        // Host Action: Draw Next Random Number
+        window.drawNumber = async function() {
+            if (!isHost) return;
+            if (calledNumbers.length >= 90) {
+                if (autoCallerInterval) toggleAutoCaller();
+                showModal("🏁", "All 90 Numbers Called", "Every number from 1 to 90 has been drawn!");
+                return;
+            }
+
+            const calledSet = new Set(calledNumbers);
+            const remaining = [];
+            for (let n = 1; n <= 90; n++) {
+                if (!calledSet.has(n)) remaining.push(n);
+            }
+
+            const nextNum = remaining[Math.floor(Math.random() * remaining.length)];
+            await commitCalledNumber(nextNum);
+        };
+
+        // Host Action: Manual Draw Number
+        window.manualDrawNumber = async function() {
+            if (!isHost) return;
+            const input = document.getElementById("manual-draw-input");
+            const val = parseInt(input.value, 10);
+
+            if (isNaN(val) || val < 1 || val > 90) {
+                showModal("🔢", "Invalid Number", "Please enter a valid number between 1 and 90.");
+                return;
+            }
+            if (calledNumbers.includes(val)) {
+                showModal("⚠️", "Already Called", `Number ${val} has already been drawn!`);
+                return;
+            }
+
+            input.value = "";
+            await commitCalledNumber(val);
+        };
+
+        async function commitCalledNumber(num) {
+            const updated = [...calledNumbers, num];
+
+            if (isOfflinePractice) {
+                calledNumbers = updated;
+                currentNumber = num;
+                lastSpokenNumber = num;
+                applyAutoMark();
+                saveSessionState();
+                renderAll();
+                speakNumber(num);
+                return;
+            }
+
+            try {
+                await updateDoc(getRoomDocRef(roomCode), {
+                    calledNumbers: updated,
+                    currentNumber: num
+                });
+            } catch (err) {
+                console.error("Draw error:", err);
+                showModal("⚠️", "Draw Failed", err.message || "Could not broadcast number.");
+            }
+        }
+
+        // Host Action: Auto-Caller (Every 5s)
+        window.toggleAutoCaller = function() {
+            if (!isHost) return;
+            const btn = document.getElementById("auto-caller-btn");
+            if (autoCallerInterval) {
+                clearInterval(autoCallerInterval);
+                autoCallerInterval = null;
+                btn.textContent = "Auto-Call: OFF (5s)";
+                btn.className = "py-2.5 px-4 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold text-xs sm:text-sm transition";
+            } else {
+                drawNumber();
+                autoCallerInterval = setInterval(() => {
+                    if (calledNumbers.length >= 90) {
+                        toggleAutoCaller();
+                    } else {
+                        drawNumber();
+                    }
+                }, 5000);
+                btn.textContent = "Auto-Call: ON (5s)";
+                btn.className = "py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs sm:text-sm shadow-sm transition";
+            }
+        };
+
+        // Host Action: Reset Room
+        window.confirmResetRoom = function() {
+            showModal(
+                "🔄",
+                "Reset Game Board?",
+                "This will clear all 90 called numbers and reset all claimed prizes for a new round.",
+                `
+                <button onclick="closeModal()" class="flex-1 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-sm transition">Cancel</button>
+                <button onclick="closeModal(); executeResetRoom();" class="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-sm transition">Yes, Reset</button>
+                `
+            );
+        };
+
+        window.executeResetRoom = async function() {
+            if (autoCallerInterval) toggleAutoCaller();
+            tickets.forEach(t => { t.daubed = new Set(); });
+            lastSpokenNumber = null;
+
+            if (isOfflinePractice) {
+                calledNumbers = [];
+                currentNumber = null;
+                claimsStatus = {};
+                saveSessionState();
+                renderAll();
+                return;
+            }
+
+            try {
+                await updateDoc(getRoomDocRef(roomCode), {
+                    calledNumbers: [],
+                    currentNumber: null,
+                    claims: {}
+                });
+            } catch (err) {
+                console.error("Reset error:", err);
+                showModal("⚠️", "Reset Failed", err.message || "Could not reset the board.");
+            }
+        };
+
+        // Auto-Mark & Cell Daubing
+        window.toggleAutoMark = function() {
+            isAutoMarkEnabled = !isAutoMarkEnabled;
+            if (isAutoMarkEnabled) applyAutoMark();
+            saveSessionState();
+            renderAll();
+        };
+
+        function applyAutoMark() {
+            if (!isAutoMarkEnabled) return;
+            const calledSet = new Set(calledNumbers);
+            tickets.forEach(t => {
+                if (!t.daubed) t.daubed = new Set();
+                for (let r = 0; r < 3; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        const val = t.grid[r][c];
+                        if (val > 0 && calledSet.has(val)) {
+                            t.daubed.add(val);
+                        }
+                    }
+                }
+            });
+        }
+
+        window.toggleCellDaub = function(ticketId, num) {
+            const tkt = tickets.find(t => t.id === ticketId);
+            if (!tkt) return;
+            if (!tkt.daubed) tkt.daubed = new Set();
+
+            if (tkt.daubed.has(num)) {
+                tkt.daubed.delete(num);
+            } else {
+                tkt.daubed.add(num);
+            }
+            saveSessionState();
+            renderAll();
+        };
+
+        // Pattern & Eligibility Verification
+        function verifyPatternOnGrid(grid, prizeName, calledSet) {
+            const rowNumbers = [0, 1, 2].map(r => grid[r].filter(n => n > 0));
+            const allNumbers = rowNumbers.flat();
+
+            switch (prizeName) {
+                case "Early 5": {
+                    let count = 0;
+                    for (const n of allNumbers) {
+                        if (calledSet.has(n)) count++;
+                    }
+                    return count >= 5;
+                }
+                case "Top Line":
+                    return rowNumbers[0].length === 5 && rowNumbers[0].every(n => calledSet.has(n));
+                case "Middle Line":
+                    return rowNumbers[1].length === 5 && rowNumbers[1].every(n => calledSet.has(n));
+                case "Bottom Line":
+                    return rowNumbers[2].length === 5 && rowNumbers[2].every(n => calledSet.has(n));
+                case "Full House":
+                    return allNumbers.length === 15 && allNumbers.every(n => calledSet.has(n));
+                default:
+                    return false;
+            }
+        }
+
+        function getTicketWonPrizes(tkt) {
+            const won = [];
+            for (const [pName, winInfo] of Object.entries(claimsStatus || {})) {
+                if (!winInfo) continue;
+                if (winInfo.ticketId) {
+                    if (winInfo.ticketId === tkt.id) won.push(pName);
+                } else if (
+                    normalizePlayerKey(winInfo.winnerName || "") === normalizePlayerKey(playerName) &&
+                    winInfo.ticketName === tkt.name
+                ) {
+                    won.push(pName);
                 }
             }
-<!-- ... existing code ... -->
+            return won;
+        }
+
+        function hasTicketWonAnyPrize(ticketId, pName, tName, claimsObj) {
+            for (const winInfo of Object.values(claimsObj || {})) {
+                if (!winInfo) continue;
+                if (winInfo.ticketId && ticketId) {
+                    if (winInfo.ticketId === ticketId) return true;
+                } else if (
+                    normalizePlayerKey(winInfo.winnerName || "") === normalizePlayerKey(pName || "") &&
+                    winInfo.ticketName === tName
+                ) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function getEligibleUnclaimedPrizesForGrid(grid, ticketId, ownerName, tName) {
+            if (onePrizePerTicket && hasTicketWonAnyPrize(ticketId, ownerName, tName, claimsStatus)) {
+                return [];
+            }
+            const calledSet = new Set(calledNumbers);
+            const eligible = [];
+            for (const p of PRIZE_DEFINITIONS) {
+                if (claimsStatus[p.name]) continue;
+                if (verifyPatternOnGrid(grid, p.name, calledSet)) {
+                    eligible.push(p.name);
+                }
+            }
+            return eligible;
+        }
+
+        // Claim a Prize (Atomic Transaction in Multiplayer)
+        window.claimPrize = async function(prizeName, explicitTicketId = null) {
+            if (tickets.length === 0) {
+                showModal("🎟️", "No Tickets", "You need at least one ticket to claim a prize.");
+                return;
+            }
+
+            if (claimsStatus[prizeName]) {
+                showModal("🏆", "Already Claimed", `${prizeName} was already won by ${claimsStatus[prizeName].winnerName}!`);
+                return;
+            }
+
+            const selectEl = document.getElementById("claim-ticket-select");
+            const targetId = explicitTicketId || (selectEl ? selectEl.value : tickets[0].id);
+            const tkt = tickets.find(t => t.id === targetId) || tickets[0];
+
+            if (onePrizePerTicket && getTicketWonPrizes(tkt).length > 0) {
+                showModal(
+                    "🔒",
+                    "Ticket Limit Reached",
+                    `The host enabled "Max 1 Prize Per Ticket", and ${tkt.name} has already won a prize.`
+                );
+                return;
+            }
+
+            const calledSet = new Set(calledNumbers);
+            const isValid = verifyPatternOnGrid(tkt.grid, prizeName, calledSet);
+
+            if (!isValid) {
+                showModal(
+                    "❌",
+                    "Bogey / Incomplete Pattern",
+                    `${tkt.name} does not yet have all required called numbers for ${prizeName}. Keep playing!`
+                );
+                return;
+            }
+
+            const winRecord = {
+                winnerName: playerName,
+                winnerUid: currentUser ? currentUser.uid : normalizePlayerKey(playerName),
+                ticketId: tkt.id,
+                ticketName: tkt.name,
+                claimedAt: Date.now()
+            };
+
+            if (isOfflinePractice) {
+                claimsStatus[prizeName] = winRecord;
+                saveSessionState();
+                renderAll();
+                triggerConfetti();
+                showModal("🎉", `${prizeName} Claimed!`, `Congratulations ${playerName}! ${tkt.name} won ${prizeName}.`);
+                return;
+            }
+
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const roomRef = getRoomDocRef(roomCode);
+                    const snap = await transaction.get(roomRef);
+                    if (!snap.exists()) throw new Error("Room no longer exists.");
+
+                    const data = snap.data();
+                    const serverClaims = data.claims || {};
+                    const serverCalledSet = new Set(data.calledNumbers || []);
+
+                    if (serverClaims[prizeName]) {
+                        throw new Error(`ALREADY_CLAIMED:${serverClaims[prizeName].winnerName}`);
+                    }
+                    if (data.onePrizePerTicket && hasTicketWonAnyPrize(tkt.id, playerName, tkt.name, serverClaims)) {
+                        throw new Error("ONE_PRIZE_LIMIT");
+                    }
+                    if (!verifyPatternOnGrid(tkt.grid, prizeName, serverCalledSet)) {
+                        throw new Error("INVALID_PATTERN");
+                    }
+
+                    transaction.update(roomRef, {
+                        [`claims.${prizeName}`]: winRecord
+                    });
+                });
+
+                triggerConfetti();
+                showModal("🎉", `${prizeName} Verified!`, `Congratulations ${playerName}! Your claim on ${tkt.name} has been recorded.`);
+            } catch (err) {
+                const msg = err.message || "";
+                if (msg.startsWith("ALREADY_CLAIMED:")) {
+                    const winner = msg.split(":")[1] || "another player";
+                    showModal("⚡", "Just Missed It!", `${prizeName} was claimed a split-second earlier by ${winner}!`);
+                } else if (msg === "ONE_PRIZE_LIMIT") {
+                    showModal("🔒", "Ticket Limit Reached", `${tkt.name} has already won a prize under the 1-prize-per-ticket rule.`);
+                } else {
+                    console.error("Claim transaction error:", err);
+                    showModal("⚠️", "Claim Could Not Be Processed", msg || "Please try again.");
+                }
+            }
+        };
+
+        // Render UI Components
+        function renderAll() {
+            // Header & Top Banner
+            document.getElementById("current-number-display").textContent = currentNumber ?? "--";
+            document.getElementById("called-count-display").textContent = calledNumbers.length;
+            document.getElementById("board-called-summary").textContent = `${calledNumbers.length} / 90 Called`;
+            document.getElementById("tab-ticket-count").textContent = tickets.length;
+
+            const nicknameEl = document.getElementById("number-nickname-display");
+            if (currentNumber) {
+                nicknameEl.textContent = NUMBER_CALLOUTS[currentNumber] || `Number ${currentNumber}`;
+            } else {
+                nicknameEl.textContent = "Waiting for first number...";
+            }
+
+            // Rule Indicator & Host Toggle Sync
+            const ruleIndicator = document.getElementById("room-rule-indicator");
+            const liveToggle = document.getElementById("live-one-prize-toggle");
+            if (onePrizePerTicket) {
+                ruleIndicator.classList.remove("hidden");
+            } else {
+                ruleIndicator.classList.add("hidden");
+            }
+            if (liveToggle) liveToggle.checked = onePrizePerTicket;
+
+            // Recent 5 Numbers
+            const recentContainer = document.getElementById("recent-numbers-list");
+            const recent = calledNumbers.slice(-5).reverse();
+            let recentHtml = "";
+            for (let i = 0; i < 5; i++) {
+                if (recent[i]) {
+                    const isLatest = i === 0;
+                    recentHtml += `<span class="w-9 h-9 rounded-xl ${isLatest ? "bg-amber-500 text-slate-950 shadow-sm" : "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"} flex items-center justify-center text-xs font-extrabold">${recent[i]}</span>`;
+                } else {
+                    recentHtml += `<span class="w-9 h-9 rounded-xl bg-slate-800 text-slate-500 border border-slate-700 flex items-center justify-center text-xs font-bold">-</span>`;
+                }
+            }
+            recentContainer.innerHTML = recentHtml;
+
+            // Auto-Mark buttons
+            document.querySelectorAll(".auto-mark-toggle-btn").forEach(btn => {
+                btn.textContent = `Auto-Mark: ${isAutoMarkEnabled ? "ON" : "OFF"}`;
+                btn.className = isAutoMarkEnabled
+                    ? "auto-mark-toggle-btn px-3.5 py-2 rounded-xl text-xs font-bold border bg-emerald-500/15 text-emerald-300 border-emerald-500/30 transition"
+                    : "auto-mark-toggle-btn px-3.5 py-2 rounded-xl text-xs font-bold border bg-slate-800 text-slate-400 border-slate-700 transition";
+            });
+
+            // Build 1-90 Master Boards
+            renderMasterGrid("host-master-grid");
+            renderMasterGrid("player-master-grid");
+
+            // Render Tickets
+            renderTicketsList("player-tickets-container");
+            if (isHost) {
+                const hostOwnSection = document.getElementById("host-own-tickets-section");
+                if (tickets.length > 0) {
+                    hostOwnSection.classList.remove("hidden");
+                    renderTicketsList("host-tickets-container");
+                } else {
+                    hostOwnSection.classList.add("hidden");
+                }
+                renderHostMonitor();
+            }
+
+            // Render Claims Tab
+            renderClaimsTab();
+        }
+
+        function renderMasterGrid(elementId) {
+            const container = document.getElementById(elementId);
+            if (!container) return;
+            const calledSet = new Set(calledNumbers);
+            let html = "";
+            for (let n = 1; n <= 90; n++) {
+                const isCalled = calledSet.has(n);
+                const isLatest = n === currentNumber;
+                let cls = "bg-slate-950 text-slate-400 border-slate-800";
+                if (isLatest) cls = "latest";
+                else if (isCalled) cls = "called";
+
+                html += `<div class="master-cell ${cls} aspect-square rounded-lg border flex items-center justify-center text-xs sm:text-sm font-bold">${n}</div>`;
+            }
+            container.innerHTML = html;
+        }
+
+        function renderTicketsList(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            if (tickets.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full bg-slate-900 rounded-2xl border border-slate-800 p-8 text-center">
+                        <p class="text-sm font-bold text-slate-200">Spectator / Caller Mode</p>
+                        <p class="text-xs text-slate-400 mt-1">You joined with 0 tickets. Use the 1–90 Board or Prizes tab to follow the game.</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = tickets.map(tkt => {
+                const wonPrizes = getTicketWonPrizes(tkt);
+                const isLockedByRule = onePrizePerTicket && wonPrizes.length > 0;
+                const eligiblePrizes = getEligibleUnclaimedPrizesForGrid(tkt.grid, tkt.id, playerName, tkt.name);
+                const markedCount = Array.from(tkt.daubed || []).length;
+
+                let gridHtml = "";
+                for (let r = 0; r < 3; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        const val = tkt.grid[r][c];
+                        if (val > 0) {
+                            const isDaubed = tkt.daubed && tkt.daubed.has(val);
+                            gridHtml += `
+                                <button onclick="toggleCellDaub('${tkt.id}', ${val})"
+                                    class="ticket-cell ${isDaubed ? "daubed" : "bg-slate-900 hover:bg-slate-800 text-slate-100 border-slate-700"} aspect-square rounded-lg border font-extrabold text-sm sm:text-base flex items-center justify-center shadow-2xs">
+                                    ${val}
+                                </button>`;
+                        } else {
+                            gridHtml += `<div class="aspect-square rounded-lg bg-slate-950/90 border border-slate-800/70"></div>`;
+                        }
+                    }
+                }
+
+                // Instant Claim Buttons when ticket is eligible
+                let claimBannerHtml = "";
+                if (eligiblePrizes.length > 0) {
+                    claimBannerHtml = `
+                        <div class="mt-3 p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 flex flex-wrap items-center justify-between gap-2 animate-pop">
+                            <span class="text-xs font-extrabold text-amber-300">🎉 Eligible to Claim!</span>
+                            <div class="flex flex-wrap gap-1.5">
+                                ${eligiblePrizes.map(p => `
+                                    <button onclick="claimPrize('${p}', '${tkt.id}')"
+                                        class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold shadow-xs transition">
+                                        Claim ${p}
+                                    </button>
+                                `).join("")}
+                            </div>
+                        </div>`;
+                }
+
+                // Won Prizes Badge
+                let wonBadgeHtml = "";
+                if (wonPrizes.length > 0) {
+                    wonBadgeHtml = `
+                        <div class="mt-2.5 flex flex-wrap items-center gap-1.5">
+                            ${wonPrizes.map(wp => `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">🏆 Won ${escapeHtml(wp)}</span>`).join("")}
+                            ${isLockedByRule ? `<span class="text-[11px] font-semibold text-slate-400">(1 Prize / Ticket limit reached)</span>` : ""}
+                        </div>`;
+                }
+
+                return `
+                    <div class="bg-slate-900 rounded-2xl border ${eligiblePrizes.length > 0 ? "border-amber-500/70 ring-2 ring-amber-500/25" : "border-slate-800"} p-4 shadow-xl">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-extrabold text-white">${escapeHtml(tkt.name)}</span>
+                                <span class="text-[11px] font-mono text-slate-500">#${tkt.id.slice(-4)}</span>
+                            </div>
+                            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                                ${markedCount} / 15 Marked
+                            </span>
+                        </div>
+                        <div class="grid grid-cols-9 gap-1 sm:gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+                            ${gridHtml}
+                        </div>
+                        ${wonBadgeHtml}
+                        ${claimBannerHtml}
+                    </div>`;
+            }).join("");
+        }
+
+        function renderHostMonitor() {
+            const playersSource = isOfflinePractice
+                ? { local: { name: playerName, tickets } }
+                : roomPlayers;
+
+            const playerCount = Object.keys(playersSource).length || 1;
+            const countLabel = document.getElementById("connected-players-count");
+            if (countLabel) {
+                countLabel.textContent = `${playerCount} player${playerCount === 1 ? "" : "s"} connected`;
+            }
+
+            // 1. Eligible Tickets across all players
+            const eligibleItems = [];
+            for (const pObj of Object.values(playersSource)) {
+                for (const t of (pObj.tickets || [])) {
+                    const prizes = getEligibleUnclaimedPrizesForGrid(t.grid, t.id, pObj.name, t.name);
+                    if (prizes.length > 0) {
+                        eligibleItems.push({
+                            playerName: pObj.name,
+                            ticketName: t.name,
+                            prizes
+                        });
+                    }
+                }
+            }
+
+            const badge = document.getElementById("eligible-count-badge");
+            const listEl = document.getElementById("host-eligible-list");
+            badge.textContent = eligibleItems.length;
+
+            if (eligibleItems.length === 0) {
+                listEl.innerHTML = `<p class="text-xs text-slate-500 italic">No tickets eligible for open prizes yet.</p>`;
+            } else {
+                listEl.innerHTML = eligibleItems.map(item => `
+                    <div class="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-between gap-2">
+                        <div>
+                            <p class="text-xs font-extrabold text-white">${escapeHtml(item.playerName)} <span class="font-normal text-slate-400">(${escapeHtml(item.ticketName)})</span></p>
+                            <p class="text-[11px] font-bold text-amber-300 mt-0.5">Ready for: ${item.prizes.join(", ")}</p>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-md bg-amber-500/25 text-amber-200 border border-amber-500/40 text-[10px] font-extrabold uppercase">Eligible</span>
+                    </div>
+                `).join("");
+            }
+
+            // 2. Prize Claim Status Summary
+            const prizeListEl = document.getElementById("host-prize-status-list");
+            prizeListEl.innerHTML = PRIZE_DEFINITIONS.map(p => {
+                const win = claimsStatus[p.name];
+                if (win) {
+                    return `
+                        <div class="flex items-center justify-between px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30">
+                            <span class="text-xs font-extrabold text-emerald-300">${p.name}</span>
+                            <span class="text-xs font-bold text-emerald-200">CLAIMED by ${escapeHtml(win.winnerName)} (${escapeHtml(win.ticketName)})</span>
+                        </div>`;
+                }
+                return `
+                    <div class="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-950 border border-slate-800">
+                        <span class="text-xs font-bold text-slate-300">${p.name}</span>
+                        <span class="text-[11px] font-semibold text-slate-500 uppercase">Open</span>
+                    </div>`;
+            }).join("");
+        }
+
+        function renderClaimsTab() {
+            const selectEl = document.getElementById("claim-ticket-select");
+            if (selectEl) {
+                const prevVal = selectEl.value;
+                if (tickets.length === 0) {
+                    selectEl.innerHTML = `<option value="">No tickets available</option>`;
+                } else {
+                    selectEl.innerHTML = tickets.map(t => {
+                        const won = getTicketWonPrizes(t);
+                        const locked = onePrizePerTicket && won.length > 0;
+                        return `<option value="${t.id}" ${locked ? "disabled" : ""}>${escapeHtml(t.name)}${locked ? ` (Locked - Won ${won[0]})` : ""}</option>`;
+                    }).join("");
+                    if (prevVal && tickets.some(t => t.id === prevVal)) {
+                        selectEl.value = prevVal;
+                    }
+                }
+            }
+
+            const grid = document.getElementById("prizes-grid");
+            if (!grid) return;
+
+            grid.innerHTML = PRIZE_DEFINITIONS.map(p => {
+                const win = claimsStatus[p.name];
+                if (win) {
+                    return `
+                        <div class="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex flex-col justify-between">
+                            <div>
+                                <div class="flex items-center justify-between">
+                                    <h4 class="text-base font-extrabold text-emerald-200">${p.name}</h4>
+                                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-500 text-slate-950">CLAIMED</span>
+                                </div>
+                                <p class="text-xs text-emerald-300/80 mt-1">${p.desc}</p>
+                            </div>
+                            <div class="mt-4 pt-3 border-t border-emerald-500/25 text-xs font-bold text-emerald-200">
+                                🏆 Won by ${escapeHtml(win.winnerName)} (${escapeHtml(win.ticketName)})
+                            </div>
+                        </div>`;
+                }
+
+                return `
+                    <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between shadow-2xs">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-base font-extrabold text-white">${p.name}</h4>
+                                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-400 border border-slate-700">OPEN</span>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">${p.desc}</p>
+                        </div>
+                        <button onclick="claimPrize('${p.name}')" ${tickets.length === 0 ? "disabled" : ""}
+                            class="mt-4 w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold text-xs shadow-2xs transition">
+                            Claim ${p.name}
+                        </button>
+                    </div>`;
+            }).join("");
+        }
+
+        // Utilities: Voice Callout, Clipboard, Modal, Confetti
+        window.toggleVoice = function() {
+            isVoiceEnabled = !isVoiceEnabled;
+            document.getElementById("voice-icon-on").classList.toggle("hidden", !isVoiceEnabled);
+            document.getElementById("voice-icon-off").classList.toggle("hidden", isVoiceEnabled);
+        };
+
+        function speakNumber(num) {
+            if (!isVoiceEnabled || !("speechSynthesis" in window)) return;
+            try {
+                window.speechSynthesis.cancel();
+                const phrase = NUMBER_CALLOUTS[num] || `Number ${num}`;
+                const utterance = new SpeechSynthesisUtterance(phrase);
+                utterance.rate = 0.95;
+                window.speechSynthesis.speak(utterance);
+            } catch (_) {}
+        }
+
+        window.copyRoomCode = function() {
+            if (!roomCode) return;
+            const temp = document.createElement("textarea");
+            temp.value = roomCode;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand("copy");
+            document.body.removeChild(temp);
+            showModal("📋", "Room Code Copied", `Share room code "${roomCode}" with your players so they can join!`);
+        };
+
+        window.showModal = function(emoji, title, message, customButtonsHtml = null) {
+            document.getElementById("modal-emoji").textContent = emoji;
+            document.getElementById("modal-title").textContent = title;
+            document.getElementById("modal-message").textContent = message;
+            const actionsEl = document.getElementById("modal-actions");
+            actionsEl.innerHTML = customButtonsHtml || `
+                <button onclick="closeModal()" class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">
+                    Got it
+                </button>`;
+            document.getElementById("app-modal").classList.remove("hidden");
+        };
+
+        window.closeModal = function() {
+            document.getElementById("app-modal").classList.add("hidden");
+        };
+
+        function triggerConfetti() {
+            const colors = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#3b82f6"];
+            for (let i = 0; i < 45; i++) {
+                const piece = document.createElement("div");
+                piece.className = "confetti-piece rounded-xs";
+                piece.style.left = `${Math.random() * 100}vw`;
+                piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                piece.style.animationDuration = `${2 + Math.random() * 1.5}s`;
+                document.body.appendChild(piece);
+                setTimeout(() => piece.remove(), 3600);
+            }
+        }
+
+        function escapeHtml(str) {
+            return String(str || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;");
+        }
+
+        // Initialize on load
+        window.addEventListener("DOMContentLoaded", () => {
+            checkSavedSession();
+        });
+    </script>
+</body>
+</html>
