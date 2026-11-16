@@ -108,6 +108,10 @@
 
                             <div class="space-y-3 pt-2">
                                 <div>
+                                    <label class="block text-[11px] font-semibold text-slate-300 mb-1">Custom Token Code <span class="text-slate-500 font-normal">(Optional)</span></label>
+                                    <input type="text" id="custom-token-input" placeholder="e.g., HOST-DIWALI-2026 (leave blank to auto-generate)" oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9\-_]/g, '')" maxlength="32" class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs font-mono font-bold text-amber-300 placeholder:font-sans placeholder:font-normal placeholder:text-slate-500 focus:outline-none focus:border-emerald-500">
+                                </div>
+                                <div>
                                     <label class="block text-[11px] font-semibold text-slate-300 mb-1">Max Ticket Capacity Limit</label>
                                     <select id="new-token-limit" class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500">
                                         <option value="25">25 Tickets (Starter)</option>
@@ -480,6 +484,20 @@
             const limit = parseInt(document.getElementById('new-token-limit').value, 10) || 50;
             const usageRadio = document.querySelector('input[name="token-usage-type"]:checked');
             const usageType = usageRadio ? usageRadio.value : 'single';
+            const customInputEl = document.getElementById('custom-token-input');
+            const customTokenVal = customInputEl ? customInputEl.value.trim().toUpperCase() : '';
+
+            if (customTokenVal) {
+                if (customTokenVal.length < 4) {
+                    showModal('⚠️', 'Token Too Short', 'Manual token code must be at least 4 characters long.');
+                    return;
+                }
+                const alreadyExists = hostingTokensDB.some(t => t.token.toUpperCase() === customTokenVal);
+                if (alreadyExists) {
+                    showModal('⚠️', 'Duplicate Token', `The token "${customTokenVal}" already exists in the database. Please choose a unique code.`);
+                    return;
+                }
+            }
 
             let startDt = null;
             let endDt = null;
@@ -498,9 +516,12 @@
                 }
             }
 
-            const part1 = Math.random().toString(36).substring(2, 6).toUpperCase();
-            const part2 = Math.random().toString(36).substring(2, 6).toUpperCase();
-            const newTokenStr = `HOST-${part1}-${part2}`;
+            let newTokenStr = customTokenVal;
+            if (!newTokenStr) {
+                const part1 = Math.random().toString(36).substring(2, 6).toUpperCase();
+                const part2 = Math.random().toString(36).substring(2, 6).toUpperCase();
+                newTokenStr = `HOST-${part1}-${part2}`;
+            }
 
             const newTokenObj = {
                 token: newTokenStr,
@@ -513,11 +534,12 @@
                 createdAt: Date.now()
             };
 
+            if (customInputEl) customInputEl.value = '';
             hostingTokensDB.unshift(newTokenObj);
             saveHostingTokensLocal();
             renderOwnerTokensList();
             await syncTokenToFirestore(newTokenObj);
-            showModal('🔑', 'Token Created & Synced', `Hosting token ${newTokenStr} has been generated and synced to Firestore.`);
+            showModal('🔑', 'Token Created & Synced', `Hosting token ${newTokenStr} has been ${customTokenVal ? 'manually created' : 'generated'} and synced to Firestore.`);
         };
 
         window.toggleTokenActiveStatus = async function(idx) {
