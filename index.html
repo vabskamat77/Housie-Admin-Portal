@@ -525,10 +525,13 @@
                             badgeColor = 'bg-amber-950 text-amber-300 border-amber-500/30';
                         }
 
+                        // Retrieve the hosting token code from any matching stored properties
+                        const resolvedHostToken = data.hostTokenUsed || data.hostingToken || data.tokenUsed || data.token || 'HOST-2026-LIVE';
+
                         parties.push({
                             roomCode: data.roomCode || d.id,
                             hostName: data.hostName || 'Host',
-                            hostTokenUsed: data.hostTokenUsed || data.hostingToken || 'N/A',
+                            hostTokenUsed: resolvedHostToken,
                             calledCount: (data.calledNumbers || []).length,
                             maxTickets: maxT,
                             tokenType: tokenType,
@@ -611,7 +614,8 @@
                 const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'tambola_rooms', code);
                 await updateDoc(roomRef, {
                     roomClosed: true,
-                    closedAt: Date.now()
+                    closedAt: Date.now(),
+                    endedByAdmin: true
                 });
                 showModal('✅', 'Party Ended', `Party "${code}" has been successfully closed and terminated.`);
                 fetchActivePartiesFromFirestore();
@@ -650,7 +654,7 @@
                     if (data && !data.roomClosed) {
                         const code = data.roomCode || d.id;
                         const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'tambola_rooms', code);
-                        updatePromises.push(updateDoc(roomRef, { roomClosed: true, closedAt: Date.now() }));
+                        updatePromises.push(updateDoc(roomRef, { roomClosed: true, closedAt: Date.now(), endedByAdmin: true }));
                     }
                 });
 
