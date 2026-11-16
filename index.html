@@ -59,6 +59,9 @@
                 <button onclick="submitOwnerLogin()" class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-xl text-sm shadow-lg transition">
                     Access Console 🚀
                 </button>
+                <div class="text-center pt-2">
+                    <span class="text-[11px] text-slate-500">Default passcode for preview: <code class="text-indigo-400 font-mono">ADMIN1234</code></span>
+                </div>
             </div>
         </div>
 
@@ -178,7 +181,7 @@
                             <h3 class="text-lg font-bold text-white flex items-center gap-2">
                                 <span>🎮 Active Parties</span>
                             </h3>
-                            <p class="text-xs text-slate-400">Real-time list of all active Tambola parties. You can end/close any party individually or end all parties at once.</p>
+                            <p class="text-xs text-slate-400">Real-time list of active Tambola parties. You can end/close any party individually or end all parties at once.</p>
                         </div>
                         <div class="flex items-center gap-2">
                             <span id="total-parties-badge" class="px-3 py-1 rounded-full bg-slate-900 text-emerald-300 border border-slate-700 text-xs font-bold">0 Active Parties</span>
@@ -525,6 +528,7 @@
                         parties.push({
                             roomCode: data.roomCode || d.id,
                             hostName: data.hostName || 'Host',
+                            hostTokenUsed: data.hostTokenUsed || data.hostingToken || 'N/A',
                             calledCount: (data.calledNumbers || []).length,
                             maxTickets: maxT,
                             tokenType: tokenType,
@@ -558,8 +562,10 @@
                                 <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30 font-bold text-[10px]">LIVE</span>
                                 <span class="px-2 py-0.5 rounded ${p.badgeColor} border font-bold text-[10px]">${p.tokenType} (${p.maxTickets} max)</span>
                             </div>
-                            <div class="text-slate-300 text-[11px]">
-                                Host: <strong class="text-white">${escapeHtml(p.hostName)}</strong> • Called Numbers: <strong class="text-emerald-400">${p.calledCount} / 90</strong>
+                            <div class="text-slate-300 text-[11px] flex flex-wrap gap-x-3 gap-y-0.5">
+                                <span>Host: <strong class="text-white">${escapeHtml(p.hostName)}</strong></span>
+                                <span>Host Token: <strong class="text-indigo-300 font-mono">${escapeHtml(p.hostTokenUsed)}</strong></span>
+                                <span>Called: <strong class="text-emerald-400">${p.calledCount} / 90</strong></span>
                             </div>
                         </div>
                         <div>
