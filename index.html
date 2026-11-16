@@ -160,8 +160,9 @@
                             <div>
                                 <h3 class="text-base font-bold text-white flex items-center gap-2">
                                     <span>🔑 Active Hosting Tokens Database</span>
+                                    <span id="token-sync-status" class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30">☁️ Firestore Synced</span>
                                 </h3>
-                                <p class="text-xs text-slate-400">Monitor active host keys, usage counters, ticket limits, and status.</p>
+                                <p class="text-xs text-slate-400">Monitor active host keys, usage counters, ticket limits, and real-time status.</p>
                             </div>
                             <span id="total-tokens-badge" class="px-3 py-1 rounded-full bg-slate-900 text-indigo-300 border border-slate-700 text-xs font-bold">0 Tokens</span>
                         </div>
@@ -252,7 +253,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, getDocs, doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, doc, updateDoc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const MANUAL_FIREBASE_CONFIG = {
             apiKey: "AIzaSyCgQ27fdHpO13OQ9V5fNIwktY_1Ezm7UQc",
@@ -281,17 +282,115 @@
             }
         }
 
-        let ownerPasscode = localStorage.getItem('tambola_owner_passcode_v1') || 'ADMIN1234';
-        let hostingTokensDB = JSON.parse(localStorage.getItem('tambola_hosting_tokens_v2') || JSON.stringify([
+        const DEFAULT_TOKENS = [
             { token: "HOST-2026-FP10", maxTickets: 10, usageType: "multi", usedCount: 0, active: true, createdAt: Date.now() },
             { token: "HOST-2026-LIVE", maxTickets: 50, usageType: "multi", usedCount: 0, active: true, createdAt: Date.now() },
             { token: "HOST-VIP-001", maxTickets: 100, usageType: "single", usedCount: 0, active: true, createdAt: Date.now() }
-        ]));
+        ];
 
-        function saveHostingTokensDB() {
+        let ownerPasscode = localStorage.getItem('tambola_owner_passcode_v1') || 'ADMIN1234';
+        let hostingTokensDB = JSON.parse(localStorage.getItem('tambola_hosting_tokens_v2') || JSON.stringify(DEFAULT_TOKENS));
+        let unsubscribeTokensListener = null;
+
+        function updateSyncBadge(status, isError = false) {
+            const badge = document.getElementById('token-sync-status');
+            if (!badge) return;
+            badge.textContent = status;
+            if (isError) {
+                badge.className = "text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-500/30";
+            } else {
+                badge.className = "text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30";
+            }
+        }
+
+        function saveHostingTokensLocal() {
             try {
                 localStorage.setItem('tambola_hosting_tokens_v2', JSON.stringify(hostingTokensDB));
             } catch (e) {}
+        }
+
+        // Sync single token record instantly to Firestore
+        async function syncTokenToFirestore(tokenObj) {
+            if (!db || !tokenObj || !tokenObj.token) return;
+            updateSyncBadge("⏳ Syncing...");
+            try {
+                const tokenRef = doc(db, 'artifacts', appId, 'public', 'data', 'tambola_hosting_tokens', tokenObj.token);
+                await setDoc(tokenRef, {
+                    ...tokenObj,
+                    updatedAt: Date.now()
+                }, { merge: true });
+                updateSyncBadge("☁️ Firestore Synced");
+            } catch (err) {
+                console.warn("Firestore token sync error:", err);
+                updateSyncBadge("⚠️ Local Only (Rules)", true);
+            }
+        }
+
+        // Delete token record instantly from Firestore
+        async function removeTokenFromFirestore(tokenCode) {
+            if (!db || !tokenCode) return;
+            updateSyncBadge("⏳ Syncing...");
+            try {
+                const tokenRef = doc(db, 'artifacts', appId, 'public', 'data', 'tambola_hosting_tokens', tokenCode);
+                await deleteDoc(tokenRef);
+                updateSyncBadge("☁️ Firestore Synced");
+            } catch (err) {
+                console.warn("Firestore token delete error:", err);
+                updateSyncBadge("⚠️ Local Only (Rules)", true);
+            }
+        }
+
+        // Attach real-time Firestore listener for hosting tokens so usage counts and statuses stay synced
+        function initTokensRealtimeSync() {
+            if (!db) {
+                updateSyncBadge("⚠️ Offline Mode", true);
+                return;
+            }
+            if (unsubscribeTokensListener) {
+                unsubscribeTokensListener();
+            }
+
+            try {
+                const tokensCol = collection(db, 'artifacts', appId, 'public', 'data', 'tambola_hosting_tokens');
+                unsubscribeTokensListener = onSnapshot(tokensCol, async (snapshot) => {
+                    if (snapshot.empty) {
+                        // Seed initial local tokens into Firestore if collection is empty
+                        for (const t of hostingTokensDB) {
+                            await syncTokenToFirestore(t);
+                        }
+                        return;
+                    }
+
+                    const remoteTokens = [];
+                    snapshot.forEach(docSnap => {
+                        const data = docSnap.data();
+                        if (data && (data.token || docSnap.id)) {
+                            remoteTokens.push({
+                                token: data.token || docSnap.id,
+                                maxTickets: data.maxTickets ?? 50,
+                                usageType: data.usageType || 'single',
+                                startDt: data.startDt || null,
+                                endDt: data.endDt || null,
+                                usedCount: data.usedCount ?? 0,
+                                active: data.active !== false,
+                                createdAt: data.createdAt || Date.now()
+                            });
+                        }
+                    });
+
+                    // Sort newest first
+                    remoteTokens.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                    hostingTokensDB = remoteTokens;
+                    saveHostingTokensLocal();
+                    renderOwnerTokensList();
+                    updateSyncBadge("☁️ Live Synced");
+                }, (err) => {
+                    console.warn("Firestore tokens snapshot listener warning:", err);
+                    updateSyncBadge("⚠️ Local Cache", true);
+                });
+            } catch (err) {
+                console.warn("Failed to attach tokens listener:", err);
+            }
         }
 
         window.toggleTimedInputs = function() {
@@ -325,6 +424,7 @@
                 document.getElementById('owner-login-view').classList.add('hidden');
                 document.getElementById('owner-dashboard-view').classList.remove('hidden');
                 renderOwnerTokensList();
+                initTokensRealtimeSync();
                 fetchActivePartiesFromFirestore();
             } else {
                 showModal('❌', 'Incorrect Passcode', 'The passcode you entered is incorrect. Please check and try again.');
@@ -332,6 +432,10 @@
         };
 
         window.logoutAdmin = function() {
+            if (unsubscribeTokensListener) {
+                unsubscribeTokensListener();
+                unsubscribeTokensListener = null;
+            }
             document.getElementById('owner-dashboard-view').classList.add('hidden');
             document.getElementById('owner-login-view').classList.remove('hidden');
             document.getElementById('owner-passcode-input').value = '';
@@ -372,7 +476,7 @@
             showModal('🔒', 'Passcode Updated', 'Admin master passcode has been successfully updated.');
         };
 
-        window.generateNewHostingToken = function() {
+        window.generateNewHostingToken = async function() {
             const limit = parseInt(document.getElementById('new-token-limit').value, 10) || 50;
             const usageRadio = document.querySelector('input[name="token-usage-type"]:checked');
             const usageType = usageRadio ? usageRadio.value : 'single';
@@ -398,7 +502,7 @@
             const part2 = Math.random().toString(36).substring(2, 6).toUpperCase();
             const newTokenStr = `HOST-${part1}-${part2}`;
 
-            hostingTokensDB.push({
+            const newTokenObj = {
                 token: newTokenStr,
                 maxTickets: limit,
                 usageType: usageType,
@@ -407,24 +511,33 @@
                 usedCount: 0,
                 active: true,
                 createdAt: Date.now()
-            });
-            saveHostingTokensDB();
+            };
+
+            hostingTokensDB.unshift(newTokenObj);
+            saveHostingTokensLocal();
             renderOwnerTokensList();
-            showModal('🔑', 'Token Created', `Hosting token ${newTokenStr} has been successfully generated.`);
+            await syncTokenToFirestore(newTokenObj);
+            showModal('🔑', 'Token Created & Synced', `Hosting token ${newTokenStr} has been generated and synced to Firestore.`);
         };
 
-        window.toggleTokenActiveStatus = function(idx) {
-            if (hostingTokensDB[idx]) {
-                hostingTokensDB[idx].active = !hostingTokensDB[idx].active;
-                saveHostingTokensDB();
+        window.toggleTokenActiveStatus = async function(idx) {
+            const target = hostingTokensDB[idx];
+            if (target) {
+                target.active = !target.active;
+                saveHostingTokensLocal();
                 renderOwnerTokensList();
+                await syncTokenToFirestore(target);
             }
         };
 
-        window.deleteHostingToken = function(idx) {
+        window.deleteHostingToken = async function(idx) {
+            const target = hostingTokensDB[idx];
+            if (!target) return;
+            const code = target.token;
             hostingTokensDB.splice(idx, 1);
-            saveHostingTokensDB();
+            saveHostingTokensLocal();
             renderOwnerTokensList();
+            await removeTokenFromFirestore(code);
         };
 
         function renderOwnerTokensList() {
