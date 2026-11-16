@@ -121,11 +121,11 @@
                                         </label>
                                         <label class="flex items-center space-x-2 cursor-pointer">
                                             <input type="radio" name="token-usage-type" value="multi" onchange="toggleTimedInputs()" class="text-indigo-600 focus:ring-indigo-500">
-                                            <span class="text-slate-200 font-medium">Multi-Use (Multiple hosts can use)</span>
+                                            <span class="text-slate-200 font-medium">Multi-Use (Multiple uses)</span>
                                         </label>
                                         <label class="flex items-center space-x-2 cursor-pointer">
                                             <input type="radio" name="token-usage-type" value="timed" onchange="toggleTimedInputs()" class="text-indigo-600 focus:ring-indigo-500">
-                                            <span class="text-slate-200 font-medium">Timed-Use (Active during duration)</span>
+                                            <span class="text-slate-200 font-medium">Timed-Use (Active for a fixed duration)</span>
                                         </label>
                                     </div>
                                 </div>
@@ -133,11 +133,11 @@
                                 <!-- Timed-Use Date & Time Pickers (Initially Hidden) -->
                                 <div id="timed-use-inputs" class="hidden space-y-2.5 bg-slate-900/80 border border-slate-700 p-3 rounded-xl text-xs">
                                     <div>
-                                        <label class="block text-[10px] font-semibold text-slate-400 mb-1">Start Date & Time (Eastern Standard Time (EST/EDT))</label>
+                                        <label class="block text-[10px] font-semibold text-slate-400 mb-1">Start Date & Time (EST)</label>
                                         <input type="datetime-local" id="token-start-dt" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500">
                                     </div>
                                     <div>
-                                        <label class="block text-[10px] font-semibold text-slate-400 mb-1">End Date & Time (Eastern Standard Time (EST/EDT))</label>
+                                        <label class="block text-[10px] font-semibold text-slate-400 mb-1">End Date & Time (EST)</label>
                                         <input type="datetime-local" id="token-end-dt" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500">
                                     </div>
                                 </div>
