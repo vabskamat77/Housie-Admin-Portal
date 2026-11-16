@@ -163,7 +163,7 @@
                             <h3 class="text-lg font-bold text-white flex items-center gap-2">
                                 <span>🎮 Active Parties in Firestore</span>
                             </h3>
-                            <p class="text-xs text-slate-400">Real-time list of all active Tambola parties. You can end/close any party individually.</p>
+                            <p class="text-xs text-slate-400">Real-time list of all active Tambola parties. You can end/close any party individually or end all parties at once.</p>
                         </div>
                         <div class="flex items-center gap-2">
                             <span id="total-parties-badge" class="px-3 py-1 rounded-full bg-slate-900 text-emerald-300 border border-slate-700 text-xs font-bold">0 Active Parties</span>
@@ -421,11 +421,30 @@
                 snap.forEach(d => {
                     const data = d.data();
                     if (data && !data.roomClosed) {
+                        const maxT = data.maxRoomTickets || 50;
+                        let tokenType = 'STANDARD';
+                        let badgeColor = 'bg-emerald-950 text-emerald-300 border-emerald-500/30';
+                        if (maxT <= 10) {
+                            tokenType = 'TRIAL';
+                            badgeColor = 'bg-indigo-950 text-indigo-300 border-indigo-500/30';
+                        } else if (maxT <= 25) {
+                            tokenType = 'STARTER';
+                            badgeColor = 'bg-teal-950 text-teal-300 border-teal-500/30';
+                        } else if (maxT <= 50) {
+                            tokenType = 'STANDARD';
+                            badgeColor = 'bg-emerald-950 text-emerald-300 border-emerald-500/30';
+                        } else {
+                            tokenType = 'MEGA';
+                            badgeColor = 'bg-amber-950 text-amber-300 border-amber-500/30';
+                        }
+
                         parties.push({
                             roomCode: data.roomCode || d.id,
                             hostName: data.hostName || 'Host',
                             calledCount: (data.calledNumbers || []).length,
-                            maxTickets: data.maxRoomTickets || 50,
+                            maxTickets: maxT,
+                            tokenType: tokenType,
+                            badgeColor: badgeColor,
                             createdAt: data.createdAt || Date.now()
                         });
                     }
@@ -438,15 +457,25 @@
                     return;
                 }
 
-                listEl.innerHTML = parties.map(p => `
+                const endAllBtnHtml = `
+                    <div class="flex justify-end mb-3">
+                        <button onclick="confirmEndAllParties()" class="px-3.5 py-2 bg-rose-900/60 hover:bg-rose-900 text-rose-200 border border-rose-700 font-bold rounded-lg transition shadow text-xs flex items-center gap-1.5">
+                            <span>🛑</span>
+                            <span>End All Parties (${parties.length})</span>
+                        </button>
+                    </div>
+                `;
+
+                const partiesHtml = parties.map(p => `
                     <div class="bg-slate-900 border border-slate-700 p-4 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
                         <div class="space-y-1">
                             <div class="flex items-center space-x-2">
                                 <span class="font-black text-amber-400 text-sm tracking-wider font-mono">${escapeHtml(p.roomCode)}</span>
                                 <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30 font-bold text-[10px]">LIVE</span>
+                                <span class="px-2 py-0.5 rounded ${p.badgeColor} border font-bold text-[10px]">${p.tokenType} (${p.maxTickets} max)</span>
                             </div>
                             <div class="text-slate-300 text-[11px]">
-                                Host: <strong class="text-white">${escapeHtml(p.hostName)}</strong> • Called Numbers: <strong class="text-emerald-400">${p.calledCount} / 90</strong> • Max Tickets: <strong class="text-indigo-300">${p.maxTickets}</strong>
+                                Host: <strong class="text-white">${escapeHtml(p.hostName)}</strong> • Called Numbers: <strong class="text-emerald-400">${p.calledCount} / 90</strong>
                             </div>
                         </div>
                         <div>
@@ -456,12 +485,14 @@
                         </div>
                     </div>
                 `).join('');
+
+                listEl.innerHTML = endAllBtnHtml + `<div class="space-y-3">${partiesHtml}</div>`;
             } catch (err) {
                 console.warn("Firestore permissions notice:", err);
                 listEl.innerHTML = `
                     <div class="bg-amber-950/40 border border-amber-500/40 p-4 rounded-xl text-xs space-y-2 text-center">
                         <div class="font-bold text-amber-300">⚠️ Firestore Security Rules Restricted Listing</div>
-                        <p class="text-slate-300">Firestore rules restrict listing all rooms directly from this collection. Parties can still be hosted, joined via direct 6-character codes, and managed securely.</p>
+                        <p class="text-slate-300">Firestore security rules restrict listing all rooms directly from this collection. Parties can still be hosted, joined via direct 6-character codes, and managed securely.</p>
                         <button onclick="fetchActivePartiesFromFirestore()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg mt-1 transition">Retry</button>
                     </div>
                 `;
@@ -476,7 +507,7 @@
             document.getElementById('modal-title').textContent = `End Party ${code}?`;
             document.getElementById('modal-message').textContent = `This will immediately close Party "${code}" in Firestore and disconnect all participants. Are you sure?`;
             document.getElementById('modal-actions').innerHTML = `
-                <div class="flex gap-2">
+                <div class="flex gap-2 w-full">
                     <button onclick="closeModal()" class="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold rounded-xl text-sm">Cancel</button>
                     <button onclick="closeModal(); executeEndParty('${code}');" class="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl text-sm shadow">End Party</button>
                 </div>
@@ -497,6 +528,49 @@
             } catch (err) {
                 console.error("Error ending party:", err);
                 showModal('❌', 'Error', `Failed to end party "${code}".`);
+            }
+        };
+
+        window.confirmEndAllParties = function() {
+            const modal = document.getElementById('custom-modal');
+            document.getElementById('modal-icon').textContent = '🛑';
+            document.getElementById('modal-title').textContent = 'End All Active Parties?';
+            document.getElementById('modal-message').textContent = 'This will immediately close all active parties in Firestore and disconnect all participants. Are you sure?';
+            document.getElementById('modal-actions').innerHTML = `
+                <div class="flex gap-2 w-full">
+                    <button onclick="closeModal()" class="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold rounded-xl text-sm">Cancel</button>
+                    <button onclick="closeModal(); executeEndAllParties();" class="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl text-sm shadow">End All Parties</button>
+                </div>
+            `;
+            modal.classList.remove('hidden');
+        };
+
+        window.executeEndAllParties = async function() {
+            if (!db) return;
+            const listEl = document.getElementById('admin-parties-list');
+            if (listEl) listEl.innerHTML = `<p class="text-xs text-slate-400 italic p-4 text-center">Closing all active parties...</p>`;
+
+            try {
+                const roomsCol = collection(db, 'artifacts', appId, 'public', 'data', 'tambola_rooms');
+                const snap = await getDocs(roomsCol);
+                const updatePromises = [];
+
+                snap.forEach(d => {
+                    const data = d.data();
+                    if (data && !data.roomClosed) {
+                        const code = data.roomCode || d.id;
+                        const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'tambola_rooms', code);
+                        updatePromises.push(updateDoc(roomRef, { roomClosed: true, closedAt: Date.now() }));
+                    }
+                });
+
+                await Promise.all(updatePromises);
+                showModal('✅', 'All Parties Ended', 'All active parties have been successfully closed and terminated.');
+                fetchActivePartiesFromFirestore();
+            } catch (err) {
+                console.error("Error ending all parties:", err);
+                showModal('❌', 'Error', 'Failed to end all parties.');
+                fetchActivePartiesFromFirestore();
             }
         };
 
