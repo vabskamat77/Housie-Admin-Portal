@@ -525,8 +525,29 @@
                             badgeColor = 'bg-amber-950 text-amber-300 border-amber-500/30';
                         }
 
-                        // Retrieve the hosting token code from any matching stored properties
-                        const resolvedHostToken = data.hostTokenUsed || data.hostingToken || data.tokenUsed || data.token || 'HOST-2026-LIVE';
+                        const resolvedHostToken = data.hostTokenUsed || data.hostToken || data.token || 'N/A';
+
+                        // Resolve party start timestamp cleanly in EST (America/New_York)
+                        let rawStart = data.createdAt || data.startedAt || data.startTime || data.timestamp || null;
+                        let formattedStart = 'Unknown';
+                        if (rawStart) {
+                            let startDateObj = null;
+                            if (typeof rawStart === 'object' && typeof rawStart.toDate === 'function') {
+                                startDateObj = rawStart.toDate();
+                            } else if (typeof rawStart === 'object' && typeof rawStart.seconds === 'number') {
+                                startDateObj = new Date(rawStart.seconds * 1000);
+                            } else {
+                                startDateObj = new Date(rawStart);
+                            }
+                            if (startDateObj && !isNaN(startDateObj.getTime())) {
+                                const estStr = startDateObj.toLocaleString('en-US', {
+                                    timeZone: 'America/New_York',
+                                    dateStyle: 'medium',
+                                    timeStyle: 'short'
+                                });
+                                formattedStart = `${estStr} EST`;
+                            }
+                        }
 
                         parties.push({
                             roomCode: data.roomCode || d.id,
@@ -536,7 +557,8 @@
                             maxTickets: maxT,
                             tokenType: tokenType,
                             badgeColor: badgeColor,
-                            createdAt: data.createdAt || Date.now()
+                            formattedStart: formattedStart,
+                            createdAt: rawStart || 0
                         });
                     }
                 });
@@ -557,29 +579,60 @@
                     </div>
                 `;
 
-                const partiesHtml = parties.map(p => `
-                    <div class="bg-slate-900 border border-slate-700 p-4 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
-                        <div class="space-y-1">
+                const tableRowsHtml = parties.map(p => `
+                    <tr class="bg-slate-900/90 hover:bg-slate-900 border-b border-slate-800 transition">
+                        <td class="px-4 py-3.5 whitespace-nowrap">
                             <div class="flex items-center space-x-2">
                                 <span class="font-black text-amber-400 text-sm tracking-wider font-mono">${escapeHtml(p.roomCode)}</span>
                                 <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30 font-bold text-[10px]">LIVE</span>
+                            </div>
+                            <div class="mt-1">
                                 <span class="px-2 py-0.5 rounded ${p.badgeColor} border font-bold text-[10px]">${p.tokenType} (${p.maxTickets} max)</span>
                             </div>
-                            <div class="text-slate-300 text-[11px] flex flex-wrap gap-x-3 gap-y-0.5">
-                                <span>Host: <strong class="text-white">${escapeHtml(p.hostName)}</strong></span>
-                                <span>Host Token: <strong class="text-indigo-300 font-mono">${escapeHtml(p.hostTokenUsed)}</strong></span>
-                                <span>Called: <strong class="text-emerald-400">${p.calledCount} / 90</strong></span>
+                        </td>
+                        <td class="px-4 py-3.5 whitespace-nowrap">
+                            <div class="text-slate-200 font-semibold text-xs">${escapeHtml(p.hostName)}</div>
+                            <div class="text-slate-400 text-[11px] mt-0.5">Called: <strong class="text-emerald-400">${p.calledCount} / 90</strong></div>
+                        </td>
+                        <td class="px-4 py-3.5 whitespace-nowrap">
+                            <div class="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-2.5 py-1 rounded-lg">
+                                <span class="text-indigo-300 font-mono font-bold text-xs select-all">${escapeHtml(p.hostTokenUsed)}</span>
+                                ${p.hostTokenUsed !== 'N/A' ? `<button onclick="navigator.clipboard.writeText('${escapeHtml(p.hostTokenUsed)}'); showModal('📋', 'Copied', 'Host token copied to clipboard.');" class="text-slate-400 hover:text-white transition text-xs" title="Copy Host Token">📋</button>` : ''}
                             </div>
-                        </div>
-                        <div>
+                        </td>
+                        <td class="px-4 py-3.5 whitespace-nowrap">
+                            <div class="text-slate-200 font-medium text-xs flex items-center gap-1.5">
+                                <span class="text-slate-400">🕒</span>
+                                <span>${escapeHtml(p.formattedStart)}</span>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3.5 whitespace-nowrap text-right">
                             <button onclick="confirmEndParty('${escapeHtml(p.roomCode)}')" class="px-3.5 py-2 bg-rose-800 hover:bg-rose-700 text-white font-bold rounded-lg transition shadow text-xs">
                                 🛑 End Party
                             </button>
-                        </div>
-                    </div>
+                        </td>
+                    </tr>
                 `).join('');
 
-                listEl.innerHTML = endAllBtnHtml + `<div class="space-y-3">${partiesHtml}</div>`;
+                listEl.innerHTML = `
+                    ${endAllBtnHtml}
+                    <div class="overflow-x-auto rounded-xl border border-slate-700">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="bg-slate-950/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-700">
+                                    <th class="px-4 py-3 font-bold">Party Code & Tier</th>
+                                    <th class="px-4 py-3 font-bold">Host & Progress</th>
+                                    <th class="px-4 py-3 font-bold">Host Token</th>
+                                    <th class="px-4 py-3 font-bold">Start Date & Time (EST)</th>
+                                    <th class="px-4 py-3 font-bold text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${tableRowsHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
             } catch (err) {
                 console.warn("Firestore permissions notice:", err);
                 listEl.innerHTML = `
@@ -615,6 +668,7 @@
                 await updateDoc(roomRef, {
                     roomClosed: true,
                     closedAt: Date.now(),
+                    closedBy: 'admin',
                     endedByAdmin: true
                 });
                 showModal('✅', 'Party Ended', `Party "${code}" has been successfully closed and terminated.`);
@@ -654,7 +708,7 @@
                     if (data && !data.roomClosed) {
                         const code = data.roomCode || d.id;
                         const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'tambola_rooms', code);
-                        updatePromises.push(updateDoc(roomRef, { roomClosed: true, closedAt: Date.now(), endedByAdmin: true }));
+                        updatePromises.push(updateDoc(roomRef, { roomClosed: true, closedAt: Date.now(), closedBy: 'admin', endedByAdmin: true }));
                     }
                 });
 
