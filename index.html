@@ -125,7 +125,7 @@
                                     <div class="space-y-2 bg-slate-900 border border-slate-700 p-3 rounded-xl text-xs">
                                         <label class="flex items-center space-x-2 cursor-pointer">
                                             <input type="radio" name="token-usage-type" value="single" checked onchange="toggleTimedInputs()" class="text-indigo-600 focus:ring-indigo-500">
-                                            <span class="text-slate-200 font-medium">Single Use (Revokes after 1 use)</span>
+                                            <span class="text-slate-200 font-medium">Single Use (48h window after 1st use • 1 active party)</span>
                                         </label>
                                         <label class="flex items-center space-x-2 cursor-pointer">
                                             <input type="radio" name="token-usage-type" value="multi" onchange="toggleTimedInputs()" class="text-indigo-600 focus:ring-indigo-500">
@@ -370,14 +370,38 @@
                     snapshot.forEach(docSnap => {
                         const data = docSnap.data();
                         if (data && (data.token || docSnap.id)) {
+                            const usageType = data.usageType || 'single';
+                            const firstUsedAt = data.firstUsedAt || data.lastUsedAt || null;
+                            let isActive = data.active !== false;
+
+                            // Auto-revoke Single-Use tokens 48 hours after first use
+                            if (usageType === 'single' && firstUsedAt && isActive) {
+                                const fortyEightHoursMs = 48 * 60 * 60 * 1000;
+                                if (Date.now() - firstUsedAt >= fortyEightHoursMs) {
+                                    isActive = false;
+                                    // Persist automatic revocation back to Firestore immediately
+                                    syncTokenToFirestore({
+                                        ...data,
+                                        token: data.token || docSnap.id,
+                                        active: false,
+                                        revokedReason: '48h_single_use_expired',
+                                        revokedAt: Date.now()
+                                    });
+                                }
+                            }
+
                             remoteTokens.push({
                                 token: data.token || docSnap.id,
                                 maxTickets: data.maxTickets ?? 50,
-                                usageType: data.usageType || 'single',
+                                usageType: usageType,
                                 startDt: data.startDt || null,
                                 endDt: data.endDt || null,
+                                firstUsedAt: firstUsedAt,
+                                activeRoomCode: data.activeRoomCode || null,
+                                singlePartyOnly: usageType === 'single' ? true : Boolean(data.singlePartyOnly),
+                                autoRevokeAfterMs: usageType === 'single' ? (48 * 60 * 60 * 1000) : null,
                                 usedCount: data.usedCount ?? 0,
-                                active: data.active !== false,
+                                active: isActive,
                                 createdAt: data.createdAt || Date.now()
                             });
                         }
@@ -530,6 +554,10 @@
                 usageType: usageType,
                 startDt: startDt,
                 endDt: endDt,
+                firstUsedAt: null,
+                activeRoomCode: null,
+                singlePartyOnly: usageType === 'single',
+                autoRevokeAfterMs: usageType === 'single' ? (48 * 60 * 60 * 1000) : null,
                 usedCount: 0,
                 active: true,
                 createdAt: Date.now()
@@ -576,16 +604,42 @@
             }
 
             const now = Date.now();
+            const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
             listEl.innerHTML = hostingTokensDB.map((t, idx) => {
                 let isExpired = false;
-                let usageLabel = 'Single-Use';
+                let usageLabel = 'Single-Use (48h • 1 Party)';
+                let singleUseWindowStr = '';
+
                 if (t.usageType === 'multi') {
                     usageLabel = 'Multi-Use';
                 } else if (t.usageType === 'timed') {
                     usageLabel = 'Timed-Use';
                     if (t.endDt && now > t.endDt) {
                         isExpired = true;
+                    }
+                } else if (t.usageType === 'single') {
+                    if (t.firstUsedAt) {
+                        const expiresAt = t.firstUsedAt + FORTY_EIGHT_HOURS_MS;
+                        const remainingMs = expiresAt - now;
+                        if (remainingMs <= 0) {
+                            isExpired = true;
+                            if (t.active) {
+                                t.active = false;
+                                saveHostingTokensLocal();
+                                syncTokenToFirestore({ ...t, active: false, revokedReason: '48h_single_use_expired', revokedAt: now });
+                            }
+                            singleUseWindowStr = ` • 48h window ended`;
+                        } else {
+                            const hrsLeft = Math.floor(remainingMs / (1000 * 60 * 60));
+                            const minsLeft = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+                            singleUseWindowStr = ` • Auto-revokes in ${hrsLeft}h ${minsLeft}m`;
+                        }
+                    } else {
+                        singleUseWindowStr = ` • 48h timer starts on 1st use`;
+                    }
+                    if (t.activeRoomCode) {
+                        singleUseWindowStr += ` • In Use (Room: ${escapeHtml(t.activeRoomCode)})`;
                     }
                 }
 
@@ -609,6 +663,7 @@
                                 <span>Limit: <strong class="text-slate-200">${t.maxTickets >= 9999 ? 'Unlimited' : t.maxTickets} tickets</strong></span>
                                 <span>Type: <strong class="text-slate-200">${usageLabel}</strong></span>
                                 <span>Used: <strong class="text-slate-200">${t.usedCount} time(s)</strong></span>
+                                ${singleUseWindowStr ? `<span class="text-indigo-300">${singleUseWindowStr}</span>` : ''}
                                 ${timedDetailsStr ? `<span class="text-amber-300">${timedDetailsStr}</span>` : ''}
                             </div>
                         </div>
@@ -807,6 +862,14 @@
                     closedBy: 'admin',
                     endedByAdmin: true
                 });
+                // Release activeRoomCode lock on any Single-Use token tied to this party
+                const linkedToken = hostingTokensDB.find(t => t.activeRoomCode === code);
+                if (linkedToken) {
+                    linkedToken.activeRoomCode = null;
+                    saveHostingTokensLocal();
+                    renderOwnerTokensList();
+                    await syncTokenToFirestore(linkedToken);
+                }
                 showModal('✅', 'Party Ended', `Party "${code}" has been successfully closed and terminated.`);
                 fetchActivePartiesFromFirestore();
             } catch (err) {
