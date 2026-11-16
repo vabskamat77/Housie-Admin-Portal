@@ -35,11 +35,6 @@
                     <p class="text-xs text-slate-400">Master Administration Console</p>
                 </div>
             </div>
-            <div>
-                <a href="index.html" class="px-3.5 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs sm:text-sm font-semibold rounded-xl transition flex items-center gap-1.5 shadow">
-                    <span>🎲 Back to Main App</span>
-                </a>
-            </div>
         </div>
     </header>
 
@@ -112,19 +107,39 @@
                                 <div>
                                     <label class="block text-[11px] font-semibold text-slate-300 mb-1">Max Ticket Capacity Limit</label>
                                     <select id="new-token-limit" class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500">
-                                        <option value="10">10 Tickets (Starter)</option>
-                                        <option value="25">25 Tickets (Medium)</option>
-                                        <option value="50" selected>50 Tickets (Standard Party)</option>
-                                        <option value="100">100 Tickets (Large Event)</option>
-                                        <option value="9999">Unlimited Tickets</option>
+                                        <option value="25">25 Tickets (Starter)</option>
+                                        <option value="50" selected>50 Tickets (Standard)</option>
+                                        <option value="100">100 Tickets (Mega)</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="block text-[11px] font-semibold text-slate-300 mb-1">Token Usage Type</label>
-                                    <select id="new-token-usage" class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500">
-                                        <option value="multi" selected>Multi-Use Token</option>
-                                        <option value="single">Single-Use Token (Revokes after 1 use)</option>
-                                    </select>
+                                    <label class="block text-[11px] font-semibold text-slate-300 mb-1.5">Token Usage Type</label>
+                                    <div class="space-y-2 bg-slate-900 border border-slate-700 p-3 rounded-xl text-xs">
+                                        <label class="flex items-center space-x-2 cursor-pointer">
+                                            <input type="radio" name="token-usage-type" value="single" checked onchange="toggleTimedInputs()" class="text-indigo-600 focus:ring-indigo-500">
+                                            <span class="text-slate-200 font-medium">Single Use (Revokes after 1 use)</span>
+                                        </label>
+                                        <label class="flex items-center space-x-2 cursor-pointer">
+                                            <input type="radio" name="token-usage-type" value="multi" onchange="toggleTimedInputs()" class="text-indigo-600 focus:ring-indigo-500">
+                                            <span class="text-slate-200 font-medium">Multi-Use (Multiple hosts can use)</span>
+                                        </label>
+                                        <label class="flex items-center space-x-2 cursor-pointer">
+                                            <input type="radio" name="token-usage-type" value="timed" onchange="toggleTimedInputs()" class="text-indigo-600 focus:ring-indigo-500">
+                                            <span class="text-slate-200 font-medium">Timed-Use (Active during duration)</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Timed-Use Date & Time Pickers (Initially Hidden) -->
+                                <div id="timed-use-inputs" class="hidden space-y-2.5 bg-slate-900/80 border border-slate-700 p-3 rounded-xl text-xs">
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-400 mb-1">Start Date & Time (Eastern Standard Time (EST/EDT))</label>
+                                        <input type="datetime-local" id="token-start-dt" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-400 mb-1">End Date & Time (Eastern Standard Time (EST/EDT))</label>
+                                        <input type="datetime-local" id="token-end-dt" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500">
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -161,7 +176,7 @@
                     <div class="flex flex-wrap justify-between items-center gap-3">
                         <div>
                             <h3 class="text-lg font-bold text-white flex items-center gap-2">
-                                <span>🎮 Active Parties in Firestore</span>
+                                <span>🎮 Active Parties</span>
                             </h3>
                             <p class="text-xs text-slate-400">Real-time list of all active Tambola parties. You can end/close any party individually or end all parties at once.</p>
                         </div>
@@ -265,9 +280,9 @@
 
         let ownerPasscode = localStorage.getItem('tambola_owner_passcode_v1') || 'ADMIN1234';
         let hostingTokensDB = JSON.parse(localStorage.getItem('tambola_hosting_tokens_v2') || JSON.stringify([
-            { token: "HOST-2026-FP10", maxTickets: 10, singleUse: false, usedCount: 0, active: true, createdAt: Date.now() },
-            { token: "HOST-2026-LIVE", maxTickets: 50, singleUse: false, usedCount: 0, active: true, createdAt: Date.now() },
-            { token: "HOST-VIP-001", maxTickets: 100, singleUse: true, usedCount: 0, active: true, createdAt: Date.now() }
+            { token: "HOST-2026-FP10", maxTickets: 10, usageType: "multi", usedCount: 0, active: true, createdAt: Date.now() },
+            { token: "HOST-2026-LIVE", maxTickets: 50, usageType: "multi", usedCount: 0, active: true, createdAt: Date.now() },
+            { token: "HOST-VIP-001", maxTickets: 100, usageType: "single", usedCount: 0, active: true, createdAt: Date.now() }
         ]));
 
         function saveHostingTokensDB() {
@@ -275,6 +290,31 @@
                 localStorage.setItem('tambola_hosting_tokens_v2', JSON.stringify(hostingTokensDB));
             } catch (e) {}
         }
+
+        window.toggleTimedInputs = function() {
+            const timedRadio = document.querySelector('input[name="token-usage-type"][value="timed"]');
+            const timedBox = document.getElementById('timed-use-inputs');
+            if (!timedBox) return;
+            if (timedRadio && timedRadio.checked) {
+                timedBox.classList.remove('hidden');
+                const startInput = document.getElementById('token-start-dt');
+                const endInput = document.getElementById('token-end-dt');
+                
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+
+                if (startInput && !startInput.value) {
+                    startInput.value = `${year}-${month}-${day}T00:01`;
+                }
+                if (endInput && !endInput.value) {
+                    endInput.value = `${year}-${month}-${day}T23:59`;
+                }
+            } else {
+                timedBox.classList.add('hidden');
+            }
+        };
 
         window.submitOwnerLogin = function() {
             const val = document.getElementById('owner-passcode-input').value.trim();
@@ -331,8 +371,25 @@
 
         window.generateNewHostingToken = function() {
             const limit = parseInt(document.getElementById('new-token-limit').value, 10) || 50;
-            const usage = document.getElementById('new-token-usage').value;
-            const singleUse = (usage === 'single');
+            const usageRadio = document.querySelector('input[name="token-usage-type"]:checked');
+            const usageType = usageRadio ? usageRadio.value : 'single';
+
+            let startDt = null;
+            let endDt = null;
+            if (usageType === 'timed') {
+                const sVal = document.getElementById('token-start-dt').value;
+                const eVal = document.getElementById('token-end-dt').value;
+                if (!sVal || !eVal) {
+                    showModal('⚠️', 'Dates Required', 'Please specify both start and end date/time for timed-use tokens.');
+                    return;
+                }
+                startDt = new Date(sVal).getTime();
+                endDt = new Date(eVal).getTime();
+                if (startDt >= endDt) {
+                    showModal('⚠️', 'Invalid Duration', 'End date/time must be later than start date/time.');
+                    return;
+                }
+            }
 
             const part1 = Math.random().toString(36).substring(2, 6).toUpperCase();
             const part2 = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -341,7 +398,9 @@
             hostingTokensDB.push({
                 token: newTokenStr,
                 maxTickets: limit,
-                singleUse: singleUse,
+                usageType: usageType,
+                startDt: startDt,
+                endDt: endDt,
                 usedCount: 0,
                 active: true,
                 createdAt: Date.now()
@@ -377,26 +436,51 @@
                 return;
             }
 
-            listEl.innerHTML = hostingTokensDB.map((t, idx) => `
-                <div class="bg-slate-900 border border-slate-700/80 p-3.5 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
-                    <div>
-                        <div class="flex items-center space-x-2">
-                            <span class="font-bold text-amber-300 font-mono tracking-wider text-sm select-all">${escapeHtml(t.token)}</span>
-                            <span class="px-2.5 py-0.5 rounded text-[10px] font-extrabold ${t.active ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30' : 'bg-rose-950 text-rose-300 border border-rose-500/30'}">${t.active ? 'ACTIVE' : 'REVOKED'}</span>
+            const now = Date.now();
+
+            listEl.innerHTML = hostingTokensDB.map((t, idx) => {
+                let isExpired = false;
+                let usageLabel = 'Single-Use';
+                if (t.usageType === 'multi') {
+                    usageLabel = 'Multi-Use';
+                } else if (t.usageType === 'timed') {
+                    usageLabel = 'Timed-Use';
+                    if (t.endDt && now > t.endDt) {
+                        isExpired = true;
+                    }
+                }
+
+                let tokenIsActive = t.active && !isExpired;
+
+                let timedDetailsStr = '';
+                if (t.usageType === 'timed' && t.startDt && t.endDt) {
+                    const sStr = new Date(t.startDt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+                    const eStr = new Date(t.endDt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+                    timedDetailsStr = ` • Valid: ${sStr} to ${eStr} ${isExpired ? '(EXPIRED)' : ''}`;
+                }
+
+                return `
+                    <div class="bg-slate-900 border border-slate-700/80 p-3.5 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold text-amber-300 font-mono tracking-wider text-sm select-all">${escapeHtml(t.token)}</span>
+                                <span class="px-2.5 py-0.5 rounded text-[10px] font-extrabold ${tokenIsActive ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30' : 'bg-rose-950 text-rose-300 border border-rose-500/30'}">${tokenIsActive ? 'ACTIVE' : (isExpired ? 'EXPIRED' : 'REVOKED')}</span>
+                            </div>
+                            <div class="text-[11px] text-slate-400 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                                <span>Limit: <strong class="text-slate-200">${t.maxTickets >= 9999 ? 'Unlimited' : t.maxTickets} tickets</strong></span>
+                                <span>Type: <strong class="text-slate-200">${usageLabel}</strong></span>
+                                <span>Used: <strong class="text-slate-200">${t.usedCount} time(s)</strong></span>
+                                ${timedDetailsStr ? `<span class="text-amber-300">${timedDetailsStr}</span>` : ''}
+                            </div>
                         </div>
-                        <div class="text-[11px] text-slate-400 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                            <span>Limit: <strong class="text-slate-200">${t.maxTickets >= 9999 ? 'Unlimited' : t.maxTickets} tickets</strong></span>
-                            <span>Type: <strong class="text-slate-200">${t.singleUse ? 'Single-Use' : 'Multi-Use'}</strong></span>
-                            <span>Used: <strong class="text-slate-200">${t.usedCount} time(s)</strong></span>
+                        <div class="flex items-center gap-2">
+                            <button onclick="navigator.clipboard.writeText('${t.token}'); showModal('📋', 'Copied', 'Token copied to clipboard.');" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-semibold transition" title="Copy Token">📋 Copy</button>
+                            <button onclick="toggleTokenActiveStatus(${idx})" class="px-3 py-1.5 ${t.active ? 'bg-amber-700 hover:bg-amber-600' : 'bg-emerald-700 hover:bg-emerald-600'} text-white rounded-lg font-semibold transition">${t.active ? 'Revoke' : 'Activate'}</button>
+                            <button onclick="deleteHostingToken(${idx})" class="px-3 py-1.5 bg-rose-800 hover:bg-rose-700 text-white rounded-lg font-semibold transition">Delete</button>
                         </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button onclick="navigator.clipboard.writeText('${t.token}'); showModal('📋', 'Copied', 'Token copied to clipboard.');" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-semibold transition" title="Copy Token">📋 Copy</button>
-                        <button onclick="toggleTokenActiveStatus(${idx})" class="px-3 py-1.5 ${t.active ? 'bg-amber-700 hover:bg-amber-600' : 'bg-emerald-700 hover:bg-emerald-600'} text-white rounded-lg font-semibold transition">${t.active ? 'Revoke' : 'Activate'}</button>
-                        <button onclick="deleteHostingToken(${idx})" class="px-3 py-1.5 bg-rose-800 hover:bg-rose-700 text-white rounded-lg font-semibold transition">Delete</button>
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
         window.renderOwnerTokensList = renderOwnerTokensList;
 
