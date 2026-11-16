@@ -412,6 +412,7 @@
                     hostingTokensDB = remoteTokens;
                     saveHostingTokensLocal();
                     renderOwnerTokensList();
+                    reconcileSingleUseTokenLocks();
                     updateSyncBadge("☁️ Live Synced");
                 }, (err) => {
                     console.warn("Firestore tokens snapshot listener warning:", err);
@@ -420,6 +421,117 @@
             } catch (err) {
                 console.warn("Failed to attach tokens listener:", err);
             }
+        }
+
+        // Cross-check active Firestore rooms against Single-Use tokens to enforce 1 active party at a time
+        let unsubscribeRoomsGuardListener = null;
+        function initRoomsGuardSync() {
+            if (!db) return;
+            if (unsubscribeRoomsGuardListener) {
+                unsubscribeRoomsGuardListener();
+            }
+            try {
+                const roomsCol = collection(db, 'artifacts', appId, 'public', 'data', 'tambola_rooms');
+                unsubscribeRoomsGuardListener = onSnapshot(roomsCol, async (snap) => {
+                    const activeRoomsByToken = {};
+                    snap.forEach(d => {
+                        const data = d.data();
+                        if (data && !data.roomClosed) {
+                            const tok = (data.hostTokenUsed || data.hostToken || data.token || '').trim().toUpperCase();
+                            if (tok) {
+                                if (!activeRoomsByToken[tok]) activeRoomsByToken[tok] = [];
+                                activeRoomsByToken[tok].push({
+                                    roomCode: data.roomCode || d.id,
+                                    createdAt: data.createdAt || data.startedAt || 0
+                                });
+                            }
+                        }
+                    });
+
+                    let changed = false;
+                    for (const t of hostingTokensDB) {
+                        if (t.usageType === 'single') {
+                            const key = t.token.toUpperCase();
+                            const liveRooms = activeRoomsByToken[key] || [];
+                            liveRooms.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
+                            // If more than 1 active party was started with the same Single-Use token, automatically close any duplicate newer parties
+                            if (liveRooms.length > 1) {
+                                const duplicates = liveRooms.slice(1);
+                                for (const dup of duplicates) {
+                                    try {
+                                        const dupRef = doc(db, 'artifacts', appId, 'public', 'data', 'tambola_rooms', dup.roomCode);
+                                        await updateDoc(dupRef, {
+                                            roomClosed: true,
+                                            closedAt: Date.now(),
+                                            closedBy: 'system_single_use_limit',
+                                            endedByAdmin: true
+                                        });
+                                    } catch (e) {
+                                        console.warn("Error closing duplicate single-use party:", dup.roomCode, e);
+                                    }
+                                }
+                            }
+
+                            const primaryActiveCode = liveRooms.length > 0 ? liveRooms[0].roomCode : null;
+                            const needsFirstUsedTimestamp = primaryActiveCode && !t.firstUsedAt;
+                            if (t.activeRoomCode !== primaryActiveCode || needsFirstUsedTimestamp) {
+                                t.activeRoomCode = primaryActiveCode;
+                                if (needsFirstUsedTimestamp) {
+                                    t.firstUsedAt = liveRooms[0].createdAt || Date.now();
+                                }
+                                changed = true;
+                                await syncTokenToFirestore(t);
+                            }
+                        }
+                    }
+
+                    if (changed) {
+                        saveHostingTokensLocal();
+                        renderOwnerTokensList();
+                    }
+                });
+            } catch (err) {
+                console.warn("Rooms guard listener warning:", err);
+            }
+        }
+
+        async function reconcileSingleUseTokenLocks() {
+            if (!db) return;
+            try {
+                const roomsCol = collection(db, 'artifacts', appId, 'public', 'data', 'tambola_rooms');
+                const snap = await getDocs(roomsCol);
+                const activeRoomsByToken = {};
+                snap.forEach(d => {
+                    const data = d.data();
+                    if (data && !data.roomClosed) {
+                        const tok = (data.hostTokenUsed || data.hostToken || data.token || '').trim().toUpperCase();
+                        if (tok) {
+                            if (!activeRoomsByToken[tok]) activeRoomsByToken[tok] = [];
+                            activeRoomsByToken[tok].push({
+                                roomCode: data.roomCode || d.id,
+                                createdAt: data.createdAt || data.startedAt || 0
+                            });
+                        }
+                    }
+                });
+
+                for (const t of hostingTokensDB) {
+                    if (t.usageType === 'single') {
+                        const liveRooms = (activeRoomsByToken[t.token.toUpperCase()] || []).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+                        const primaryCode = liveRooms.length > 0 ? liveRooms[0].roomCode : null;
+                        if (t.activeRoomCode !== primaryCode) {
+                            t.activeRoomCode = primaryCode;
+                            if (primaryCode && !t.firstUsedAt) {
+                                t.firstUsedAt = liveRooms[0].createdAt || Date.now();
+                            }
+                            saveHostingTokensLocal();
+                            renderOwnerTokensList();
+                            await syncTokenToFirestore(t);
+                        }
+                    }
+                }
+            } catch (e) {}
         }
 
         window.toggleTimedInputs = function() {
@@ -454,6 +566,7 @@
                 document.getElementById('owner-dashboard-view').classList.remove('hidden');
                 renderOwnerTokensList();
                 initTokensRealtimeSync();
+                initRoomsGuardSync();
                 fetchActivePartiesFromFirestore();
             } else {
                 showModal('❌', 'Incorrect Passcode', 'The passcode you entered is incorrect. Please check and try again.');
@@ -464,6 +577,10 @@
             if (unsubscribeTokensListener) {
                 unsubscribeTokensListener();
                 unsubscribeTokensListener = null;
+            }
+            if (unsubscribeRoomsGuardListener) {
+                unsubscribeRoomsGuardListener();
+                unsubscribeRoomsGuardListener = null;
             }
             document.getElementById('owner-dashboard-view').classList.add('hidden');
             document.getElementById('owner-login-view').classList.remove('hidden');
@@ -912,6 +1029,15 @@
                 });
 
                 await Promise.all(updatePromises);
+                // Release any activeRoomCode locks across all Single-Use tokens
+                for (const t of hostingTokensDB) {
+                    if (t.activeRoomCode) {
+                        t.activeRoomCode = null;
+                        await syncTokenToFirestore(t);
+                    }
+                }
+                saveHostingTokensLocal();
+                renderOwnerTokensList();
                 showModal('✅', 'All Parties Ended', 'All active parties have been successfully closed and terminated.');
                 fetchActivePartiesFromFirestore();
             } catch (err) {
