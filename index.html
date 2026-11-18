@@ -32,7 +32,7 @@
                 </div>
                 <div>
                     <h1 class="font-bold text-base sm:text-lg leading-tight text-white">Tambola Game Management</h1>
-                    <p class="text-xs text-slate-400">Master Administration Console</p>
+                    <p class="text-xs text-slate-400">Stripe-compatible monitoring • Admin security upgrade required</p>
                 </div>
             </div>
         </div>
@@ -60,7 +60,7 @@
                     Access Console 🚀
                 </button>
                 <div class="text-center pt-2">
-                    <span class="text-[11px] text-slate-500">Default passcode for preview: <code class="text-indigo-400 font-mono">ADMIN1234</code></span>
+                    <span class="text-[11px] text-slate-500">Preview-only passcode (not secure authentication): <code class="text-indigo-400 font-mono">ADMIN1234</code></span>
                 </div>
             </div>
         </div>
@@ -72,7 +72,7 @@
             <div class="bg-slate-800 border border-slate-700 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div class="flex flex-wrap items-center gap-2 w-full md:w-auto bg-slate-900 p-1.5 rounded-xl border border-slate-700">
                     <button onclick="switchAdminTab('tokens')" id="tab-btn-tokens" class="flex-1 md:flex-initial px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition bg-indigo-600 text-white shadow">
-                        🔑 Token Management
+                        🔑 Stripe Tokens & Management
                     </button>
                     <button onclick="switchAdminTab('parties')" id="tab-btn-parties" class="flex-1 md:flex-initial px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition text-slate-400 hover:text-white">
                         🎮 Party Dashboard
@@ -102,7 +102,7 @@
                                 </div>
                                 <div>
                                     <h3 class="text-base font-bold text-white leading-tight">Generate Hosting Token</h3>
-                                    <p class="text-[11px] text-slate-400">Create access keys for party hosts.</p>
+                                    <p class="text-[11px] text-slate-400">Legacy manual token generator (disabled until secured server-side issuance is configured).</p>
                                 </div>
                             </div>
 
@@ -153,8 +153,8 @@
                         </div>
 
                         <div class="pt-2">
-                            <button onclick="generateNewHostingToken()" class="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs sm:text-sm transition shadow">
-                                ➕ Generate Token
+                            <button onclick="showModal('🔒', 'Server Issuance Required', 'The new main game only redeems tokens issued by the Vercel backend. Manual token creation here is disabled to avoid unusable or insecure tokens.')" disabled class="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs sm:text-sm transition shadow">
+                                🔒 Manual Issuance Disabled
                             </button>
                         </div>
                     </div>
@@ -165,9 +165,9 @@
                             <div>
                                 <h3 class="text-base font-bold text-white flex items-center gap-2">
                                     <span>🔑 Active Hosting Tokens Database</span>
-                                    <span id="token-sync-status" class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30">☁️ Firestore Synced</span>
+                                    <span id="token-sync-status" class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30">⏳ Connecting</span>
                                 </h3>
-                                <p class="text-xs text-slate-400">Monitor active host keys, usage counters, ticket limits, and real-time status.</p>
+                                <p class="text-xs text-slate-400">View Stripe-issued tokens from the same Firestore collection used by the main game. Paid token changes require an authenticated server API.</p>
                             </div>
                             <span id="total-tokens-badge" class="px-3 py-1 rounded-full bg-slate-900 text-indigo-300 border border-slate-700 text-xs font-bold">0 Tokens</span>
                         </div>
@@ -179,7 +179,13 @@
                 </div>
             </div>
 
-            <!-- ================= TAB 2: PARTY DASHBOARD ================= -->
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-xl space-y-3">
+<h3 class="font-bold text-white">💳 Stripe Payment Overview</h3>
+<p class="text-xs text-slate-400">Paid sessions and token fulfillment from Firestore. Stripe payment information is displayed only if your security rules authorize access.</p>
+<div id="stripe-sessions-status" class="text-xs text-slate-400">Sign in to load payment sessions.</div>
+<div id="stripe-sessions-list" class="space-y-2 max-h-80 overflow-y-auto"></div>
+</div>
+<!-- ================= TAB 2: PARTY DASHBOARD ================= -->
             <div id="section-parties" class="hidden space-y-6">
                 <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl space-y-5">
                     <div class="flex flex-wrap justify-between items-center gap-3">
@@ -212,7 +218,7 @@
                             ⚙️
                         </div>
                         <h3 class="text-lg font-bold text-white">Account & Credentials Management</h3>
-                        <p class="text-xs text-slate-400">Update your administrator password and security credentials.</p>
+                        <p class="text-xs text-slate-400">Browser-only passcode preferences. This is NOT server-side administrator authentication.</p>
                     </div>
 
                     <div class="space-y-4 pt-2">
@@ -294,7 +300,7 @@
         ];
 
         let ownerPasscode = localStorage.getItem('tambola_owner_passcode_v1') || 'ADMIN1234';
-        let hostingTokensDB = JSON.parse(localStorage.getItem('tambola_hosting_tokens_v2') || JSON.stringify(DEFAULT_TOKENS));
+        let hostingTokensDB = []; // Firestore is authoritative; never seed tokens from local storage.
         let unsubscribeTokensListener = null;
 
         function updateSyncBadge(status, isError = false) {
@@ -346,87 +352,39 @@
         }
 
         // Attach real-time Firestore listener for hosting tokens so usage counts and statuses stay synced
+        let unsubscribeStripeSessions = null;
         function initTokensRealtimeSync() {
-            if (!db) {
-                updateSyncBadge("⚠️ Offline Mode", true);
-                return;
-            }
-            if (unsubscribeTokensListener) {
-                unsubscribeTokensListener();
-            }
-
-            try {
-                const tokensCol = collection(db, 'artifacts', appId, 'public', 'data', 'tambola_hosting_tokens');
-                unsubscribeTokensListener = onSnapshot(tokensCol, async (snapshot) => {
-                    if (snapshot.empty) {
-                        // Seed initial local tokens into Firestore if collection is empty
-                        for (const t of hostingTokensDB) {
-                            await syncTokenToFirestore(t);
-                        }
-                        return;
-                    }
-
-                    const remoteTokens = [];
-                    snapshot.forEach(docSnap => {
-                        const data = docSnap.data();
-                        if (data && (data.token || docSnap.id)) {
-                            const usageType = data.usageType || 'single';
-                            const firstUsedAt = data.firstUsedAt || data.lastUsedAt || null;
-                            let isActive = data.active !== false;
-
-                            // Auto-revoke Single-Use tokens 48 hours after first use
-                            if (usageType === 'single' && firstUsedAt && isActive) {
-                                const fortyEightHoursMs = 48 * 60 * 60 * 1000;
-                                if (Date.now() - firstUsedAt >= fortyEightHoursMs) {
-                                    isActive = false;
-                                    // Persist automatic revocation back to Firestore immediately
-                                    syncTokenToFirestore({
-                                        ...data,
-                                        token: data.token || docSnap.id,
-                                        active: false,
-                                        revokedReason: '48h_single_use_expired',
-                                        revokedAt: Date.now()
-                                    });
-                                }
-                            }
-
-                            remoteTokens.push({
-                                token: data.token || docSnap.id,
-                                maxTickets: data.maxTickets ?? 50,
-                                usageType: usageType,
-                                startDt: data.startDt || null,
-                                endDt: data.endDt || null,
-                                firstUsedAt: firstUsedAt,
-                                activeRoomCode: data.activeRoomCode || null,
-                                singlePartyOnly: usageType === 'single' ? true : Boolean(data.singlePartyOnly),
-                                autoRevokeAfterMs: usageType === 'single' ? (48 * 60 * 60 * 1000) : null,
-                                usedCount: data.usedCount ?? 0,
-                                active: isActive,
-                                createdAt: data.createdAt || Date.now()
-                            });
-                        }
-                    });
-
-                    // Sort newest first
-                    remoteTokens.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-                    hostingTokensDB = remoteTokens;
-                    saveHostingTokensLocal();
-                    renderOwnerTokensList();
-                    reconcileSingleUseTokenLocks();
-                    updateSyncBadge("☁️ Live Synced");
-                }, (err) => {
-                    console.warn("Firestore tokens snapshot listener warning:", err);
-                    updateSyncBadge("⚠️ Local Cache", true);
-                });
-            } catch (err) {
-                console.warn("Failed to attach tokens listener:", err);
-            }
+            if (!db) { updateSyncBadge('⚠️ Firebase unavailable', true); return; }
+            if (unsubscribeTokensListener) unsubscribeTokensListener();
+            const tokensCol = collection(db, 'artifacts', appId, 'public', 'data', 'tambola_tokens');
+            unsubscribeTokensListener = onSnapshot(tokensCol, snapshot => {
+                hostingTokensDB = snapshot.docs.map(d => ({...d.data(), token: d.data().token || d.id}));
+                hostingTokensDB.sort((a,b) => millis(b.createdAt)-millis(a.createdAt));
+                renderOwnerTokensList();
+                updateSyncBadge('☁️ Stripe Tokens Live');
+            }, err => {
+                console.warn('Paid token read failed:',err);
+                updateSyncBadge('⚠️ Access denied / unavailable',true);
+                document.getElementById('owner-tokens-list').textContent = 'Cannot read tambola_tokens. Configure secure admin authentication and authorized Firestore access.';
+            });
+            if (unsubscribeStripeSessions) unsubscribeStripeSessions();
+            unsubscribeStripeSessions = onSnapshot(collection(db,'stripe_payment_sessions'), snap => {
+                document.getElementById('stripe-sessions-status').textContent = `${snap.size} payment session(s) visible`;
+                const rows = snap.docs.map(d => ({...d.data(), id:d.id})).sort((a,b)=>millis(b.createdAt)-millis(a.createdAt));
+                document.getElementById('stripe-sessions-list').innerHTML = rows.length ? rows.slice(0,100).map(r => `<div class="bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs"><div class="font-semibold text-white">${escapeHtml(r.tier || 'Package')} • ${escapeHtml(r.paymentStatus || 'unknown')} • ${Number(r.maxTickets || 0)} tickets</div><div class="text-slate-400 break-all mt-1">Session: ${escapeHtml(r.stripeSessionId || r.id)}</div><div class="text-amber-300 break-all">Token: ${escapeHtml(r.token || 'Pending')}</div><div class="text-slate-500">${formatDate(r.createdAt)}</div></div>`).join('') : '<p class="text-slate-400 text-xs">No payment sessions found.</p>';
+            }, err => {
+                console.warn('Payment session read failed:',err);
+                document.getElementById('stripe-sessions-status').textContent = 'Payment sessions are not accessible to this browser. Server-side admin authorization is required.';
+            });
         }
+        function millis(value) { if (!value) return 0; if (typeof value.toMillis === 'function') return value.toMillis(); if (typeof value.seconds === 'number') return value.seconds*1000; return Number(value) || Date.parse(value) || 0; }
+        function formatDate(value) { const n=millis(value); return n ? new Date(n).toLocaleString() : 'Unknown'; }
 
         // Cross-check active Firestore rooms against Single-Use tokens to enforce 1 active party at a time
         let unsubscribeRoomsGuardListener = null;
         function initRoomsGuardSync() {
             if (!db) return;
+            if (unsubscribeStripeSessions) { unsubscribeStripeSessions(); unsubscribeStripeSessions = null; }
             if (unsubscribeRoomsGuardListener) {
                 unsubscribeRoomsGuardListener();
             }
@@ -566,7 +524,7 @@
                 document.getElementById('owner-dashboard-view').classList.remove('hidden');
                 renderOwnerTokensList();
                 initTokensRealtimeSync();
-                initRoomsGuardSync();
+                // Do not run legacy room guard: paid token state is owned by the secure backend.
                 fetchActivePartiesFromFirestore();
             } else {
                 showModal('❌', 'Incorrect Passcode', 'The passcode you entered is incorrect. Please check and try again.');
@@ -709,90 +667,24 @@
         };
 
         function renderOwnerTokensList() {
-            const listEl = document.getElementById('owner-tokens-list');
-            const badgeEl = document.getElementById('total-tokens-badge');
-            if (!listEl) return;
-
-            if (badgeEl) badgeEl.textContent = `${hostingTokensDB.length} Token${hostingTokensDB.length === 1 ? '' : 's'}`;
-
-            if (hostingTokensDB.length === 0) {
-                listEl.innerHTML = `<p class="text-xs text-slate-500 italic p-4 text-center">No hosting tokens generated yet.</p>`;
-                return;
-            }
-
-            const now = Date.now();
-            const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
-
-            listEl.innerHTML = hostingTokensDB.map((t, idx) => {
-                let isExpired = false;
-                let usageLabel = 'Single-Use (48h • 1 Party)';
-                let singleUseWindowStr = '';
-
-                if (t.usageType === 'multi') {
-                    usageLabel = 'Multi-Use';
-                } else if (t.usageType === 'timed') {
-                    usageLabel = 'Timed-Use';
-                    if (t.endDt && now > t.endDt) {
-                        isExpired = true;
-                    }
-                } else if (t.usageType === 'single') {
-                    if (t.firstUsedAt) {
-                        const expiresAt = t.firstUsedAt + FORTY_EIGHT_HOURS_MS;
-                        const remainingMs = expiresAt - now;
-                        if (remainingMs <= 0) {
-                            isExpired = true;
-                            if (t.active) {
-                                t.active = false;
-                                saveHostingTokensLocal();
-                                syncTokenToFirestore({ ...t, active: false, revokedReason: '48h_single_use_expired', revokedAt: now });
-                            }
-                            singleUseWindowStr = ` • 48h window ended`;
-                        } else {
-                            const hrsLeft = Math.floor(remainingMs / (1000 * 60 * 60));
-                            const minsLeft = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
-                            singleUseWindowStr = ` • Auto-revokes in ${hrsLeft}h ${minsLeft}m`;
-                        }
-                    } else {
-                        singleUseWindowStr = ` • 48h timer starts on 1st use`;
-                    }
-                    if (t.activeRoomCode) {
-                        singleUseWindowStr += ` • In Use (Room: ${escapeHtml(t.activeRoomCode)})`;
-                    }
-                }
-
-                let tokenIsActive = t.active && !isExpired;
-
-                let timedDetailsStr = '';
-                if (t.usageType === 'timed' && t.startDt && t.endDt) {
-                    const sStr = new Date(t.startDt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
-                    const eStr = new Date(t.endDt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
-                    timedDetailsStr = ` • Valid: ${sStr} to ${eStr} ${isExpired ? '(EXPIRED)' : ''}`;
-                }
-
-                return `
-                    <div class="bg-slate-900 border border-slate-700/80 p-3.5 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
-                        <div>
-                            <div class="flex items-center space-x-2">
-                                <span class="font-bold text-amber-300 font-mono tracking-wider text-sm select-all">${escapeHtml(t.token)}</span>
-                                <span class="px-2.5 py-0.5 rounded text-[10px] font-extrabold ${tokenIsActive ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30' : 'bg-rose-950 text-rose-300 border border-rose-500/30'}">${tokenIsActive ? 'ACTIVE' : (isExpired ? 'EXPIRED' : 'REVOKED')}</span>
-                            </div>
-                            <div class="text-[11px] text-slate-400 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                                <span>Limit: <strong class="text-slate-200">${t.maxTickets >= 9999 ? 'Unlimited' : t.maxTickets} tickets</strong></span>
-                                <span>Type: <strong class="text-slate-200">${usageLabel}</strong></span>
-                                <span>Used: <strong class="text-slate-200">${t.usedCount} time(s)</strong></span>
-                                ${singleUseWindowStr ? `<span class="text-indigo-300">${singleUseWindowStr}</span>` : ''}
-                                ${timedDetailsStr ? `<span class="text-amber-300">${timedDetailsStr}</span>` : ''}
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <button onclick="navigator.clipboard.writeText('${t.token}'); showModal('📋', 'Copied', 'Token copied to clipboard.');" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-semibold transition" title="Copy Token">📋 Copy</button>
-                            <button onclick="toggleTokenActiveStatus(${idx})" class="px-3 py-1.5 ${t.active ? 'bg-amber-700 hover:bg-amber-600' : 'bg-emerald-700 hover:bg-emerald-600'} text-white rounded-lg font-semibold transition">${t.active ? 'Revoke' : 'Activate'}</button>
-                            <button onclick="deleteHostingToken(${idx})" class="px-3 py-1.5 bg-rose-800 hover:bg-rose-700 text-white rounded-lg font-semibold transition">Delete</button>
-                        </div>
-                    </div>
-                `;
+            const list = document.getElementById('owner-tokens-list');
+            document.getElementById('total-tokens-badge').textContent = `${hostingTokensDB.length} Stripe Token(s)`;
+            if (!hostingTokensDB.length) { list.innerHTML = '<p class="text-xs text-slate-400">No Stripe-issued tokens visible.</p>'; return; }
+            list.innerHTML = hostingTokensDB.map(t => {
+                const status = t.active === false ? 'REVOKED' : (t.inUse ? 'IN USE' : String(t.status || 'ACTIVE').toUpperCase());
+                const amount = Number.isFinite(Number(t.amountPaid)) ? (Number(t.amountPaid)/100).toFixed(2) : '—';
+                return `<div class="bg-slate-900 border border-slate-700 rounded-xl p-3.5 space-y-2 text-xs">
+                    <div class="flex flex-wrap items-center justify-between gap-2"><span class="font-mono font-bold text-amber-300 break-all">${escapeHtml(t.token)}</span><span class="font-bold ${t.active === false ? 'text-rose-400' : 'text-emerald-400'}">${escapeHtml(status)}</span></div>
+                    <div class="flex flex-wrap gap-x-4 gap-y-1 text-slate-300"><span>Package: <b>${escapeHtml(t.tier || 'Unknown')}</b></span><span>Capacity: <b>${Number(t.maxTickets || 0)}</b></span><span>Used: <b>${Number(t.usedCount || 0)}</b></span><span>Paid: <b>CAD $${amount}</b></span><span>Payment: <b>${escapeHtml(t.paymentStatus || 'Unknown')}</b></span></div>
+                    <div class="text-slate-400">Created: ${formatDate(t.createdAt)} • Room: ${escapeHtml(t.activeRoomCode || 'None')}</div>
+                    <div class="text-slate-400 break-all">Stripe session: ${escapeHtml(t.stripeSessionId || 'N/A')}</div>
+                    <div class="text-slate-400 break-all">Buyer: ${escapeHtml(t.buyerEmail || 'Not provided')}</div>
+                    <button class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 font-semibold" onclick="copyHostToken(this)" data-token="${escapeHtml(t.token)}">📋 Copy Token</button>
+                    <span class="text-amber-300 ml-2">Paid tokens are read-only until secure admin endpoints are configured.</span>
+                </div>`;
             }).join('');
         }
+        window.copyHostToken = async el => { try { await navigator.clipboard.writeText(el.dataset.token); showModal('📋','Copied','Host token copied.'); } catch(e) { showModal('⚠️','Copy unavailable','Please select and copy the token manually.'); } };
         window.renderOwnerTokensList = renderOwnerTokensList;
 
         async function fetchActivePartiesFromFirestore() {
@@ -970,6 +862,7 @@
         };
 
         window.executeEndParty = async function(code) {
+            showModal('🔒','Secure Admin API Required','Closing parties requires authenticated server-side authorization. This action is disabled to prevent unauthorized database changes.'); return;
             if (!db) return;
             try {
                 const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'tambola_rooms', code);
@@ -1010,6 +903,7 @@
         };
 
         window.executeEndAllParties = async function() {
+            showModal('🔒','Secure Admin API Required','Bulk party closure is disabled until authenticated server-side admin endpoints are configured.'); return;
             if (!db) return;
             const listEl = document.getElementById('admin-parties-list');
             if (listEl) listEl.innerHTML = `<p class="text-xs text-slate-400 italic p-4 text-center">Closing all active parties...</p>`;
